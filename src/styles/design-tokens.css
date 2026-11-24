@@ -1,0 +1,97 @@
+/**
+ * TypeStrike design tokens.
+ * Base guidance comes from the UI UX Pro Max "Minimalism & Swiss Style"
+ * result (rtl_level: full). Palette and typefaces are adapted to the explicit
+ * product direction in requirements.md: dark futuristic arcade, neon cyan /
+ * electric blue, controlled purple, Inter + Vazirmatn.
+ */
+:root {
+  color-scheme: dark;
+
+  /* Surfaces */
+  --bg-base: #050b14;
+  --bg-surface: #0a1423;
+  --bg-elevated: #101d31;
+  --bg-input: #0d1728;
+
+  /* Brand */
+  --color-primary: #22d3ee;
+  --color-primary-strong: #06b6d4;
+  --color-secondary: #3b82f6;
+  --color-accent: #8b5cf6;
+  --color-success: #34d399;
+  --color-warning: #fbbf24;
+  --color-danger: #f87171;
+
+  /* On-color */
+  --color-on-primary: #04121c;
+  --color-on-secondary: #ffffff;
+  --color-on-accent: #ffffff;
+  --color-on-danger: #1a0707;
+
+  /* Text */
+  --text-primary: #f1f5f9;
+  --text-secondary: #b6c4d6;
+  --text-muted: #8296ad;
+  --color-foreground: var(--text-primary);
+  --color-background: var(--bg-base);
+
+  /* Lines & focus */
+  --border-subtle: rgba(148, 163, 184, 0.16);
+  --border-medium: rgba(148, 163, 184, 0.28);
+  --border-glow: rgba(34, 211, 238, 0.45);
+  --color-border: var(--border-subtle);
+  --color-ring: var(--color-primary);
+
+  /* Typography */
+  --font-en: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-fa: "Vazirmatn", "Inter", system-ui, sans-serif;
+  --font-body: var(--font-en);
+  --font-heading: var(--font-en);
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 2rem;
+  --text-4xl: 2.5rem;
+
+  /* Rhythm */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  /* Elevation */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.45);
+  --shadow-glow: 0 0 0 1px rgba(34, 211, 238, 0.14), 0 0 28px rgba(34, 211, 238, 0.12);
+  --shadow-glow-strong: 0 0 0 1px rgba(34, 211, 238, 0.32), 0 0 36px rgba(34, 211, 238, 0.22);
+
+  /* Motion */
+  --duration-fast: 150ms;
+  --duration-normal: 220ms;
+  --duration-slow: 360ms;
+  --ease-standard: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  /* Layout */
+  --header-height: 64px;
+  --max-content-width: 1440px;
+  --touch-target: 44px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}

@@ -1,0 +1,33 @@
+/* Design Tokens - Auto-generated */
+/* Do not edit directly - modify tokens.json instead */
+
+/* === PRIMITIVES === */
+:root {
+
+}
+
+/* === SEMANTIC === */
+:root {
+  --color-primary: #DC2626;
+  --color-on-primary: #FFFFFF;
+  --color-secondary: #2563EB;
+  --color-on-secondary: #FFFFFF;
+  --color-accent: #22C55E;
+  --color-on-accent: #0F172A;
+  --color-background: #0F172A;
+  --color-foreground: #FFFFFF;
+  --color-card: #192134;
+  --color-card-foreground: #FFFFFF;
+  --color-muted: #1F1829;
+  --color-muted-foreground: #94A3B8;
+  --color-destructive: #DC2626;
+  --color-on-destructive: #FFFFFF;
+  --color-ring: #DC2626;
+  --font-heading: "Press Start 2P", cursive;
+  --font-body: VT323, monospace;
+}
+
+/* === COMPONENTS === */
+:root {
+
+}
