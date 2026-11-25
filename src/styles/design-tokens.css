@@ -1,20 +1,26 @@
 /**
- * TypeStrike design tokens.
- * Base guidance comes from the UI UX Pro Max "Minimalism & Swiss Style"
- * result (rtl_level: full). Palette and typefaces are adapted to the explicit
- * product direction in requirements.md: dark futuristic arcade, neon cyan /
- * electric blue, controlled purple, Inter + Vazirmatn.
+ * TypeStrike design tokens — the single source of truth for the UI shell.
+ *
+ * Token model (adapted from IBM Carbon's role-based approach, with no IBM
+ * branding): primitives are mapped to semantic roles (layer / border / text /
+ * action / status / focus), and components consume the roles rather than raw
+ * colors. Layout follows an 8px rhythm (4px half-steps for optical alignment).
+ * Typography is productive by default; expressive sizing is reserved for the
+ * landing hero. Motion stays at ~200ms and honors reduced-motion preferences.
+ *
+ * Original ts-* variable names are retained as compatibility aliases because
+ * they are used across the game canvas and shell components.
  */
 :root {
   color-scheme: dark;
 
-  /* Surfaces */
+  /* ── Primitives: surfaces ───────────────────────────────────────────── */
   --bg-base: #050b14;
   --bg-surface: #0a1423;
   --bg-elevated: #101d31;
   --bg-input: #0d1728;
 
-  /* Brand */
+  /* ── Primitives: brand and status palette ──────────────────────────── */
   --color-primary: #22d3ee;
   --color-primary-strong: #06b6d4;
   --color-secondary: #3b82f6;
@@ -23,27 +29,61 @@
   --color-warning: #fbbf24;
   --color-danger: #f87171;
 
-  /* On-color */
   --color-on-primary: #04121c;
   --color-on-secondary: #ffffff;
   --color-on-accent: #ffffff;
   --color-on-danger: #1a0707;
 
-  /* Text */
-  --text-primary: #f1f5f9;
-  --text-secondary: #b6c4d6;
-  --text-muted: #8296ad;
-  --color-foreground: var(--text-primary);
-  --color-background: var(--bg-base);
-
-  /* Lines & focus */
+  /* ── Primitives: lines and focus ───────────────────────────────────── */
   --border-subtle: rgba(148, 163, 184, 0.16);
   --border-medium: rgba(148, 163, 184, 0.28);
   --border-glow: rgba(34, 211, 238, 0.45);
   --color-border: var(--border-subtle);
   --color-ring: var(--color-primary);
 
-  /* Typography */
+  /* ── Semantic roles: layer ─────────────────────────────────────────── */
+  --layer-app: var(--bg-base);
+  --layer-surface: var(--bg-surface);
+  --layer-raised: var(--bg-elevated);
+  --layer-input: var(--bg-input);
+  --layer-header: rgba(5, 11, 20, 0.96);
+  --layer-backdrop: rgba(2, 6, 14, 0.72);
+  --surface-hover: rgba(148, 163, 184, 0.1);
+  --surface-selected: rgba(34, 211, 238, 0.1);
+
+  /* ── Semantic roles: border ────────────────────────────────────────── */
+  --border-default: var(--border-subtle);
+  --border-strong: var(--border-medium);
+  --border-accent: var(--border-glow);
+
+  /* ── Semantic roles: text ──────────────────────────────────────────── */
+  --text-primary: #f1f5f9;
+  --text-secondary: #b6c4d6;
+  --text-muted: #8296ad;
+  --color-foreground: var(--text-primary);
+  --color-background: var(--bg-base);
+  --text-strong: var(--text-primary);
+  --text-default: var(--text-secondary);
+  --text-subtle: var(--text-muted);
+
+  /* ── Semantic roles: action ────────────────────────────────────────── */
+  --action-primary-bg: var(--color-primary);
+  --action-primary-bg-hover: var(--color-primary-strong);
+  --action-primary-fg: var(--color-on-primary);
+  --action-secondary-bg: var(--bg-elevated);
+  --action-secondary-fg: var(--text-primary);
+  --action-danger-fg: var(--color-danger);
+
+  /* ── Semantic roles: status ────────────────────────────────────────── */
+  --status-success: var(--color-success);
+  --status-warning: var(--color-warning);
+  --status-danger: var(--color-danger);
+
+  /* ── Semantic roles: focus ─────────────────────────────────────────── */
+  --focus-ring: var(--color-ring);
+  --focus-ring-width: 2px;
+
+  /* ── Type families and scale ───────────────────────────────────────── */
   --font-en: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-fa: "Vazirmatn", "Inter", system-ui, sans-serif;
   --font-body: var(--font-en);
@@ -56,8 +96,16 @@
   --text-2xl: 1.5rem;
   --text-3xl: 2rem;
   --text-4xl: 2.5rem;
+  --type-display: var(--text-4xl);
+  --type-heading-1: var(--text-3xl);
+  --type-heading-2: var(--text-2xl);
+  --type-heading-3: var(--text-xl);
+  --type-body: var(--text-base);
+  --type-body-sm: var(--text-sm);
+  --type-caption: var(--text-xs);
 
-  /* Rhythm */
+  /* ── Spacing: 8px rhythm, 4px half-steps ───────────────────────────── */
+  --space-unit: 0.5rem;
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -68,25 +116,33 @@
   --space-10: 2.5rem;
   --space-12: 3rem;
   --space-16: 4rem;
+
+  /* ── Radii ─────────────────────────────────────────────────────────── */
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
   --radius-xl: 20px;
+  --radius-control: var(--radius-md);
+  --radius-surface: var(--radius-lg);
 
-  /* Elevation */
+  /* ── Elevation: functional only (dialogs and menus) ────────────────── */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
   --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
   --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.45);
+  /* Legacy compatibility aliases; new UI surfaces stay flat. */
   --shadow-glow: 0 0 0 1px rgba(34, 211, 238, 0.14), 0 0 28px rgba(34, 211, 238, 0.12);
   --shadow-glow-strong: 0 0 0 1px rgba(34, 211, 238, 0.32), 0 0 36px rgba(34, 211, 238, 0.22);
 
-  /* Motion */
+  /* ── Motion ────────────────────────────────────────────────────────── */
   --duration-fast: 150ms;
   --duration-normal: 220ms;
   --duration-slow: 360ms;
   --ease-standard: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --motion-fast: var(--duration-fast);
+  --motion-normal: var(--duration-normal);
+  --motion-ease: var(--ease-standard);
 
-  /* Layout */
+  /* ── Layout ────────────────────────────────────────────────────────── */
   --header-height: 64px;
   --max-content-width: 1440px;
   --touch-target: 44px;

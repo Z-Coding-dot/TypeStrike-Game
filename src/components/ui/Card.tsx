@@ -20,9 +20,9 @@ export function Card({
     surface,
     "min-w-0 max-w-full text-start",
     padded ? "p-4 sm:p-5" : "",
-    tone === "accent" ? "!border-[var(--border-glow)] shadow-[var(--shadow-glow)]" : "",
+    tone === "accent" ? "border-[var(--border-accent)]" : "",
     interactive
-      ? "cursor-pointer transition-[border-color,box-shadow,transform] duration-200 hover:!border-[var(--border-glow)] hover:shadow-[var(--shadow-glow)] hover:-translate-y-0.5"
+      ? "cursor-pointer transition-colors duration-200 hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)]"
       : "",
     className,
   ]

@@ -34,8 +34,8 @@ function ToggleRow({ label, onText, offText, checked, icon, testId, onChange }: 
   const labelId = useId();
 
   return (
-    <div className="flex min-h-11 items-center justify-between gap-3 rounded-md border border-[var(--border-subtle)] px-3 py-2">
-      <span className="flex min-w-0 items-center gap-2 text-sm text-[var(--text-secondary)]">
+    <div className="flex min-h-11 items-center justify-between gap-3 rounded-md border border-[var(--border-default)] bg-[var(--layer-input)] px-3 py-2">
+      <span className="flex min-w-0 items-center gap-2 text-sm text-[var(--text-default)]">
         <span aria-hidden="true" className="shrink-0 text-[var(--color-primary)]">
           {icon}
         </span>
@@ -50,7 +50,7 @@ function ToggleRow({ label, onText, offText, checked, icon, testId, onChange }: 
         aria-labelledby={labelId}
         data-testid={testId}
         onClick={() => onChange(!checked)}
-        className="flex min-h-11 min-w-16 shrink-0 cursor-pointer items-center justify-end gap-2 rounded-md px-1 text-xs text-[var(--text-muted)] transition-colors duration-200 hover:text-[var(--text-primary)] focus-visible:outline-2 focus-visible:outline-offset-2"
+        className="flex min-h-11 min-w-16 shrink-0 cursor-pointer items-center justify-end gap-2 rounded-md px-1 text-xs text-[var(--text-subtle)] transition-colors duration-200 hover:text-[var(--text-strong)] focus-visible:outline-2 focus-visible:outline-offset-2"
       >
         <span aria-hidden="true" className="whitespace-nowrap">
           {checked ? onText : offText}
@@ -60,8 +60,8 @@ function ToggleRow({ label, onText, offText, checked, icon, testId, onChange }: 
           className={[
             "relative block h-6 w-11 shrink-0 rounded-full border transition-colors duration-200",
             checked
-              ? "border-[var(--color-primary)] bg-[rgba(34,211,238,0.24)]"
-              : "border-[var(--border-medium)] bg-[rgba(148,163,184,0.12)]",
+              ? "border-[var(--border-accent)] bg-[var(--surface-selected)]"
+              : "border-[var(--border-strong)] bg-[var(--surface-hover)]",
           ].join(" ")}
         >
           <span
@@ -92,12 +92,12 @@ function SliderRow({ label, value, displayValue, min, max, step, testId, onChang
   const inputId = useId();
 
   return (
-    <div className="rounded-md border border-[var(--border-subtle)] px-3 py-2">
+    <div className="rounded-md border border-[var(--border-default)] bg-[var(--layer-input)] px-3 py-2">
       <div className="flex min-h-8 items-center justify-between gap-3">
-        <label htmlFor={inputId} className="min-w-0 text-sm text-[var(--text-secondary)]">
+        <label htmlFor={inputId} className="min-w-0 text-sm text-[var(--text-default)]">
           {label}
         </label>
-        <span dir="ltr" className="shrink-0 text-xs tabular-nums text-[var(--text-muted)]">
+        <span dir="ltr" className="ts-numeric shrink-0 text-xs text-[var(--text-subtle)]">
           {displayValue}
         </span>
       </div>
@@ -159,9 +159,9 @@ export function SettingsPanel({
       ].join(" ")}
     >
       {showHeader ? (
-        <div className="flex items-center gap-2 border-b border-[var(--border-subtle)] pb-3">
+        <div className="flex items-center gap-2 border-b border-[var(--border-default)] pb-3">
           <Settings2 aria-hidden="true" size={18} className="shrink-0 text-[var(--color-primary)]" />
-          <h2 className="min-w-0 text-base font-semibold text-[var(--text-primary)]">{t("settings")}</h2>
+          <h2 className="min-w-0 text-base font-semibold text-[var(--text-strong)]">{t("settings")}</h2>
           {onClose ? (
             <IconButton
               aria-label="Close settings"
@@ -178,7 +178,7 @@ export function SettingsPanel({
           role="status"
           aria-live="polite"
           dir="auto"
-          className="rounded-md border border-[var(--border-glow)] bg-[rgba(34,211,238,0.08)] px-3 py-2 text-sm text-[var(--text-primary)]"
+          className="rounded-md border border-[var(--border-accent)] bg-[var(--surface-selected)] px-3 py-2 text-sm text-[var(--text-strong)]"
         >
           {speechNotice}
         </p>
@@ -186,14 +186,14 @@ export function SettingsPanel({
 
       <div className="grid min-w-0 gap-3">
         <div className="min-w-0">
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+          <h3 className="ts-overline mb-2">
             {t("language")}
           </h3>
           <LanguageSelector />
         </div>
 
         <div className="min-w-0">
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+          <h3 className="ts-overline mb-2">
             {t("mode")}
           </h3>
           <ModeSelector variant="compact" />
@@ -249,7 +249,7 @@ export function SettingsPanel({
           />
         </div>
 
-        <div className="flex flex-wrap gap-2 border-t border-[var(--border-subtle)] pt-3">
+        <div className="flex flex-wrap gap-2 border-t border-[var(--border-default)] pt-3">
           <Button variant="secondary" icon={<RotateCcw size={16} />} onClick={restartGame}>
             {t("restart")}
           </Button>

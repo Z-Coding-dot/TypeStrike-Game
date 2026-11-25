@@ -19,7 +19,8 @@ import {
 } from "@/game/utils/gameCalculations";
 import { graphemeLength, normalizeForComparison, toGraphemes } from "@/game/utils/textNormalization";
 import { findBestCandidate, getMatchedGraphemeCount, matchesTarget } from "@/game/utils/wordValidation";
-import type { TargetManager } from "./TargetManager";
+import { getGameArenaGeometry, MIN_ARENA_HEIGHT, MIN_ARENA_WIDTH } from "@/game/systems/GameGeometry";
+import type { TargetManager, TargetManagerBounds } from "./TargetManager";
 import type { GameScene } from "./GameScene";
 
 const EMPTY_ATTEMPT: TypingAttemptResult = {
@@ -30,19 +31,10 @@ const EMPTY_ATTEMPT: TypingAttemptResult = {
   incorrectDelta: 0,
 };
 
-const MIN_CANVAS_WIDTH = 280;
-const MIN_CANVAS_HEIGHT = 240;
-const DANGER_INSET = 110;
-const SPAWN_TOP_Y = 36;
+const MIN_CANVAS_WIDTH = MIN_ARENA_WIDTH;
+const MIN_CANVAS_HEIGHT = MIN_ARENA_HEIGHT;
 const STATS_EMIT_INTERVAL_MS = 250;
 const SCENE_READY_TIMEOUT_MS = 5000;
-
-interface EngineBounds {
-  width: number;
-  height: number;
-  topY: number;
-  dangerY: number;
-}
 
 /**
  * Headless game-rules facade. Phaser is loaded only in `init()`, so the rules
@@ -135,6 +127,9 @@ export class GameEngine implements GameEngineApi {
       this.initialized = true;
     } catch (error) {
       this.renderer = this.renderer === "WebGL" ? "WebGL" : "Canvas";
+      // Keep initialization failures observable in the browser console; the
+      // game UI error is only a summary and must not hide the original stack.
+      console.error("TypeStrike: game engine initialization failed", error);
       this.config.callbacks.onError(
         error instanceof Error ? error.message : "Failed to initialize the game engine",
       );
@@ -250,6 +245,9 @@ export class GameEngine implements GameEngineApi {
     const height = Math.max(MIN_CANVAS_HEIGHT, container.clientHeight || 600);
     const wasPaused = this.status === "paused";
 
+    // The old scene's projectile tweens disappear with the renderer. Settle any
+    // in-flight shots first so their targets cannot stay frozen forever.
+    this.resolvePendingShots();
     this.renderer = "Canvas";
     this.config.callbacks.onRendererChange?.("Canvas");
     try {
@@ -264,12 +262,12 @@ export class GameEngine implements GameEngineApi {
   }
 
   private updateBounds(width: number, height: number): void {
-    const safeHeight = Math.max(MIN_CANVAS_HEIGHT, height);
+    const geometry = getGameArenaGeometry(width, height);
     this.targetManager?.setBounds({
-      width: Math.max(MIN_CANVAS_WIDTH, width),
-      height: safeHeight,
-      topY: SPAWN_TOP_Y,
-      dangerY: Math.max(SPAWN_TOP_Y + 48, safeHeight - DANGER_INSET),
+      width: geometry.width,
+      height: geometry.height,
+      topY: geometry.spawnY,
+      gameOverY: geometry.gameOverY,
     });
   }
 
@@ -298,6 +296,12 @@ export class GameEngine implements GameEngineApi {
     this.startClock();
     this.scene?.setPaused(false);
     this.setStatus("playing");
+
+    // Shots can be settled while paused (for example when animations are
+    // switched off). Finish a level that was reached during that pause.
+    if (this.levelCompletePending && this.destroyedThisLevel >= this.levelConfig.quota) {
+      this.completeLevel();
+    }
   }
 
   advanceLevel(): void {
@@ -374,6 +378,7 @@ export class GameEngine implements GameEngineApi {
       : [];
     this.lastTypedGraphemes = typedGraphemes;
 
+    // A target already hit by an in-flight projectile can never be shot twice.
     const hittableTargets = this.targets.filter(
       (target) => !target.destroying && !this.pendingShots.has(target.id),
     );
@@ -396,22 +401,39 @@ export class GameEngine implements GameEngineApi {
     };
 
     if (!candidate) {
-      this.refreshDerivedStats();
-      this.emitStats();
-      return {
-        accepted: false,
-        matchedTargetId: null,
-        resetInput: false,
-        correctDelta,
-        incorrectDelta,
-      };
+      return this.rejectInput(correctDelta, incorrectDelta, typedGraphemes.length);
     }
 
     const matched = getMatchedGraphemeCount(value, candidate.text, language);
     this.applyMatched(candidate.id, matched);
+    // A shared prefix can be correct while later characters are wrong. Once
+    // input diverges it can never become valid by appending more characters,
+    // so it must be released instead of trapping the keyboard.
+    const diverged = matched < typedGraphemes.length;
 
-    const isComplete = matched >= graphemeLength(candidate.text) && matchesTarget(value, candidate.text, language);
+    if (this.config.mode === "letters") {
+      // One correctly typed grapheme = one bullet. The input resets after every
+      // shot so a multi-grapheme letter target needs one shot per remaining letter.
+      const hasCorrectLetter =
+        matched >= 1 &&
+        appendedGraphemes.some(
+          (grapheme, index) => grapheme === candidateGraphemes[previous.length + index],
+        );
+      if (!hasCorrectLetter) {
+        return this.rejectInput(correctDelta, incorrectDelta, typedGraphemes.length);
+      }
+      return this.fireShot(candidate, true, correctDelta, incorrectDelta);
+    }
+
+    // Word and sentence modes fire a single projectile only for the full text.
+    const isComplete =
+      !diverged &&
+      matched >= graphemeLength(candidate.text) &&
+      matchesTarget(value, candidate.text, language);
     if (!isComplete) {
+      if (diverged) {
+        return this.rejectInput(correctDelta, incorrectDelta, typedGraphemes.length);
+      }
       this.refreshDerivedStats();
       this.emitStats();
       return {
@@ -422,17 +444,58 @@ export class GameEngine implements GameEngineApi {
         incorrectDelta,
       };
     }
+    return this.fireShot(candidate, false, correctDelta, incorrectDelta);
+  }
 
-    const frozen = this.targetManager?.markDestroying(candidate.id) ?? this.freezeLocalTarget(candidate.id);
+  /** Releases stale, unmatched input so the next keystroke starts cleanly. */
+  private rejectInput(correctDelta: number, incorrectDelta: number, typedLength: number): TypingAttemptResult {
+    this.lastTypedGraphemes = [];
+    this.refreshDerivedStats();
+    this.emitStats();
+    if (typedLength === 0) return { ...EMPTY_ATTEMPT, correctDelta, incorrectDelta };
+
+    this.config.callbacks.onInputReset();
+    return {
+      accepted: false,
+      matchedTargetId: null,
+      resetInput: true,
+      correctDelta,
+      incorrectDelta,
+    };
+  }
+
+  /** Creates exactly one projectile for one settled, correct shot. */
+  private fireShot(
+    target: TargetData,
+    removeOneLetter: boolean,
+    correctDelta: number,
+    incorrectDelta: number,
+  ): TypingAttemptResult {
+    if (this.pendingShots.has(target.id) || target.destroying) {
+      this.refreshDerivedStats();
+      this.emitStats();
+      return { ...EMPTY_ATTEMPT, correctDelta, incorrectDelta };
+    }
+
+    const frozen = this.targetManager?.markDestroying(target.id) ?? this.freezeLocalTarget(target.id);
     if (!frozen) {
       this.refreshDerivedStats();
       this.emitStats();
       return { ...EMPTY_ATTEMPT, correctDelta, incorrectDelta };
     }
 
+    const baseText = target.baseText ?? target.text;
+    const remainingBefore = target.remainingGraphemes ?? graphemeLength(target.text);
+    const remainingAfter = removeOneLetter ? Math.max(0, remainingBefore - 1) : 0;
+    const remainingText =
+      remainingAfter > 0 ? toGraphemes(target.text).slice(1).join("") : target.text;
+
     const snapshot: TargetData = {
-      ...candidate,
-      matchedGraphemes: graphemeLength(candidate.text),
+      ...target,
+      baseText,
+      displayText: remainingAfter > 0 ? remainingText : target.text,
+      remainingGraphemes: remainingAfter,
+      matchedGraphemes: graphemeLength(target.text),
       destroying: true,
     };
     this.pendingShots.set(snapshot.id, snapshot);
@@ -442,7 +505,7 @@ export class GameEngine implements GameEngineApi {
 
     // With no renderer (unit tests/headless mode) there is no projectile tween
     // to report impact, so finalize synchronously.
-    if (this.scene) this.scene.playDestroy(snapshot);
+    if (this.scene) this.scene.playDestroy(snapshot, remainingAfter === 0);
     else this.finalizeShot(snapshot);
 
     return {
@@ -456,14 +519,29 @@ export class GameEngine implements GameEngineApi {
 
   /** Called by GameScene when the projectile reaches its target. */
   private finalizeShot(target: TargetData): void {
-    if (this.status !== "playing" || this.destroyed || !this.pendingShots.has(target.id)) return;
+    const shot = this.pendingShots.get(target.id);
+    if (this.destroyed || !shot || (this.status !== "playing" && this.status !== "paused")) return;
     this.pendingShots.delete(target.id);
 
+    if ((shot.remainingGraphemes ?? 0) > 0) {
+      // One letter was removed. The target stays alive and resumes moving.
+      const applied =
+        this.targetManager?.applyLetterShot(
+          shot.id,
+          shot.displayText ?? toGraphemes(shot.text).slice(1).join(""),
+          shot.remainingGraphemes ?? 0,
+        ) ?? this.applyLocalLetterShot(shot);
+      if (!applied) return;
+      this.emitTargets();
+      return;
+    }
+
     const destroyed =
-      this.targetManager?.remove(target.id) ?? this.removeLocalTarget(target.id) ?? { ...target, destroying: false };
+      this.targetManager?.remove(target.id) ?? this.removeLocalTarget(target.id) ?? { ...shot, destroying: false };
+    const scoreText = destroyed.baseText ?? destroyed.text;
     const breakdown = this.scoring.scoreTarget(
       destroyed.kind,
-      graphemeLength(destroyed.text),
+      graphemeLength(scoreText),
       this.stats.combo,
     );
     const combo = this.stats.combo + 1;
@@ -479,16 +557,47 @@ export class GameEngine implements GameEngineApi {
     this.refreshDerivedStats();
     this.emitStats();
     this.emitTargets();
-    this.config.callbacks.onTargetDestroyed({ ...destroyed, destroying: false });
+    this.config.callbacks.onTargetDestroyed({
+      ...destroyed,
+      text: scoreText,
+      displayText: scoreText,
+      destroying: false,
+    });
 
-    if (this.destroyedThisLevel >= this.levelConfig.quota) this.completeLevel();
+    if (this.destroyedThisLevel < this.levelConfig.quota) return;
+    if (this.status === "playing") {
+      this.completeLevel();
+      return;
+    }
+    // Defer the level banner until the player resumes; scoring still settles.
+    this.levelCompletePending = true;
+  }
+
+  /** Settles in-flight shots before the renderer is replaced. */
+  private resolvePendingShots(): void {
+    for (const shot of Array.from(this.pendingShots.values())) this.finalizeShot(shot);
   }
 
   private freezeLocalTarget(id: string): boolean {
     const index = this.targets.findIndex((target) => target.id === id);
-    if (index < 0) return false;
+    if (index < 0 || this.targets[index].destroying) return false;
     this.targets[index] = { ...this.targets[index], destroying: true };
     return true;
+  }
+
+  private applyLocalLetterShot(shot: TargetData): TargetData | null {
+    const index = this.targets.findIndex((target) => target.id === shot.id);
+    if (index < 0) return null;
+    const updated: TargetData = {
+      ...this.targets[index],
+      text: shot.displayText ?? this.targets[index].text,
+      displayText: shot.displayText,
+      remainingGraphemes: shot.remainingGraphemes,
+      matchedGraphemes: 0,
+      destroying: false,
+    };
+    this.targets[index] = updated;
+    return updated;
   }
 
   updateSettings(settings: GameSettings): void {
@@ -518,6 +627,9 @@ export class GameEngine implements GameEngineApi {
     if (now - this.lastStatsEmitAt >= STATS_EMIT_INTERVAL_MS) {
       this.refreshDerivedStats();
       this.emitStats();
+      // Movement mutates manager targets in place; refresh the accessible DOM
+      // mirror so its coordinates follow the rendered scene.
+      this.emitTargets();
       this.lastStatsEmitAt = now;
     }
   }
@@ -631,21 +743,24 @@ export class GameEngine implements GameEngineApi {
     return Math.max(0, this.levelConfig.quota - this.destroyedThisLevel - this.targets.length);
   }
 
-  private getBounds(): EngineBounds {
+  private getBounds(): TargetManagerBounds {
     const container = this.config.container;
-    const width = Math.max(MIN_CANVAS_WIDTH, container?.clientWidth || 960);
-    const height = Math.max(MIN_CANVAS_HEIGHT, container?.clientHeight || 600);
+    const geometry = getGameArenaGeometry(
+      container?.clientWidth || 960,
+      container?.clientHeight || 600,
+    );
     return {
-      width,
-      height,
-      topY: SPAWN_TOP_Y,
-      dangerY: Math.max(SPAWN_TOP_Y + 48, height - DANGER_INSET),
+      width: geometry.width,
+      height: geometry.height,
+      topY: geometry.spawnY,
+      gameOverY: geometry.gameOverY,
     };
   }
 
   private applyMatched(targetId: string, matched: number): void {
     const manager = this.targetManager;
     if (manager) {
+      manager.clearOtherMatches(targetId);
       manager.setMatched(targetId, matched);
       return;
     }

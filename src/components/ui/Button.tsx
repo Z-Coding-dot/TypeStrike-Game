@@ -18,8 +18,7 @@ const VARIANT_CLASSES: Record<ButtonVariant, string> = {
   primary: "ts-btn-primary",
   secondary: "ts-btn-secondary",
   danger: "ts-btn-danger",
-  ghost:
-    "border border-transparent bg-transparent text-[var(--text-secondary)] hover:bg-[rgba(148,163,184,0.12)] hover:text-[var(--text-primary)]",
+  ghost: "ts-btn-ghost",
 };
 
 const SIZE_CLASSES: Record<ButtonSize, string> = {

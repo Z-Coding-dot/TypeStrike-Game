@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { AudioLifecycle } from "@/components/layout/AudioLifecycle";
 import { ClientProviders } from "@/components/layout/ClientProviders";
 import "./globals.css";
 
@@ -41,6 +42,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         />
       </head>
       <body>
+        <AudioLifecycle />
         <ClientProviders>{children}</ClientProviders>
       </body>
     </html>

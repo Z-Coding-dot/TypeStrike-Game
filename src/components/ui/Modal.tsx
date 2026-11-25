@@ -119,6 +119,7 @@ export function Modal({
     <AnimatePresence>
       {open ? (
         <motion.div
+          key="modal-layer"
           className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -127,7 +128,7 @@ export function Modal({
         >
           <div
             aria-hidden="true"
-            className="absolute inset-0 bg-[rgba(2,6,14,0.82)]"
+            className="absolute inset-0 bg-[var(--layer-backdrop)]"
             onMouseDown={() => onCloseRef.current()}
           />
           <motion.div

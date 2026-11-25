@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { TargetManager } from "@/game/engine/TargetManager";
 import { getLevelConfig } from "@/game/systems/LevelSystem";
+import { SHIP_CENTER_FROM_BOTTOM, TARGET_HALF_HEIGHT } from "@/game/systems/GameGeometry";
 import type { LanguageCode } from "@/types/language";
 
 function advance(manager: TargetManager, milliseconds: number): void {
@@ -19,7 +20,7 @@ function createManager(language: LanguageCode) {
     mode: "words",
     language,
     level: getLevelConfig("words", 1),
-    bounds: { width: 960, height: 600, topY: 36, dangerY: 82 },
+    bounds: { width: 960, height: 600, topY: 28, gameOverY: 82 },
     onLifeLoss: (target) => losses.push(target.text),
     getSpawnBudget: () => budget.value,
     random: () => 0.2,
@@ -29,14 +30,14 @@ function createManager(language: LanguageCode) {
 
 describe("TargetManager", () => {
   for (const language of ["en", "fa-AF"] as const) {
-    it(`spawns ${language} content, moves it and reports danger-boundary loss`, () => {
+    it(`spawns ${language} content, moves it and reports boundary loss`, () => {
       const { manager, losses } = createManager(language);
 
       advance(manager, 1500);
       const [target] = manager.getTargets();
       expect(target).toBeDefined();
       expect(target.language).toBe(language);
-      expect(target.y).toBe(36);
+      expect(target.y).toBe(28);
 
       advance(manager, 1000);
       expect(losses).toContain(target.text);
@@ -49,6 +50,7 @@ describe("TargetManager", () => {
     advance(manager, 1500);
     const [target] = manager.getTargets();
     expect(manager.markDestroying(target.id)).toBe(true);
+    expect(manager.markDestroying(target.id)).toBe(false);
     budget.value = 0;
 
     const frozenY = target.y;
@@ -56,5 +58,45 @@ describe("TargetManager", () => {
 
     expect(losses).toEqual([]);
     expect(manager.getTargets()[0]).toMatchObject({ id: target.id, y: frozenY, destroying: true });
+  });
+
+  it("lets targets pass the ship and only costs a life beyond the game-over boundary", () => {
+    const losses: string[] = [];
+    const budget = { value: 1 };
+    const manager = new TargetManager({
+      mode: "words",
+      language: "en",
+      level: {
+        ...getLevelConfig("words", 1),
+        speed: 100,
+        spawnIntervalMs: 100,
+        maxConcurrent: 1,
+        quota: 1,
+      },
+      bounds: {
+        width: 1000,
+        height: 600,
+        topY: 28,
+        gameOverY: 600 + TARGET_HALF_HEIGHT,
+      },
+      onLifeLoss: (target) => losses.push(target.id),
+      getSpawnBudget: () => budget.value,
+      random: () => 0.2,
+    });
+
+    advance(manager, 120);
+    budget.value = 0;
+    const [target] = manager.getTargets();
+    expect(target).toBeDefined();
+
+    const shipY = 600 - SHIP_CENTER_FROM_BOTTOM;
+    advance(manager, 5600);
+    expect(losses).toEqual([]);
+    expect(manager.getTargets()).toHaveLength(1);
+    expect(manager.getTargets()[0].y).toBeGreaterThan(shipY);
+
+    advance(manager, 300);
+    expect(losses).toEqual([target.id]);
+    expect(manager.getTargets()).toHaveLength(0);
   });
 });

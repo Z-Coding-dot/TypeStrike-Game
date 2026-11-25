@@ -13,9 +13,9 @@ export interface ProgressBarProps {
 }
 
 const FILL_CLASSES: Record<NonNullable<ProgressBarProps["tone"]>, string> = {
-  primary: "bg-[var(--color-primary)] shadow-[0_0_12px_rgba(34,211,238,0.45)]",
-  secondary: "bg-[var(--color-secondary)] shadow-[0_0_12px_rgba(59,130,246,0.4)]",
-  accent: "bg-[var(--color-accent)] shadow-[0_0_12px_rgba(139,92,246,0.4)]",
+  primary: "bg-[var(--action-primary-bg)]",
+  secondary: "bg-[var(--color-secondary)]",
+  accent: "bg-[var(--color-accent)]",
 };
 
 export function ProgressBar({
@@ -42,7 +42,7 @@ export function ProgressBar({
         aria-valuemax={upperBound}
         aria-valuenow={current}
         aria-valuetext={`${rounded}%`}
-        className="relative h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-[rgba(148,163,184,0.16)]"
+        className="relative h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-[var(--surface-hover)]"
       >
         <motion.div
           className={["absolute inset-block-0 h-full rounded-full", FILL_CLASSES[tone]].join(" ")}
@@ -53,7 +53,7 @@ export function ProgressBar({
         />
       </div>
       {showValue ? (
-        <span dir="ltr" className="shrink-0 text-xs font-medium tabular-nums text-[var(--text-secondary)]">
+        <span dir="ltr" className="ts-numeric shrink-0 text-xs font-medium text-[var(--text-default)]">
           {rounded}%
         </span>
       ) : null}

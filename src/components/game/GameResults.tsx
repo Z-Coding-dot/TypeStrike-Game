@@ -3,8 +3,6 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { Home, RotateCcw, Trophy } from "lucide-react";
 import Link from "next/link";
-import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { useI18n } from "@/hooks/useI18n";
 import { MODE_LABELS } from "@/lib/constants";
@@ -46,19 +44,19 @@ export function GameResults({ result, onRestart, heading = "results" }: GameResu
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.24 }}
-      className="fixed inset-0 z-40 flex items-center justify-center overflow-y-auto bg-bg-base/88 p-4 backdrop-blur-sm"
+      className="ts-overlay fixed inset-0 z-40 flex items-center justify-center overflow-y-auto p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="results-title"
       data-testid="results-overlay"
     >
-      <Card className="my-auto w-full max-w-xl p-5 sm:p-7">
+      <div className="ts-overlay-card my-auto w-full max-w-xl p-5 sm:p-7">
         <header className="flex flex-col items-center gap-2 text-center">
-          <Trophy className="size-8 text-warning" aria-hidden="true" />
-          <h2 id="results-title" className="text-xl font-bold text-fg sm:text-2xl">
+          <Trophy className="size-8 text-[var(--color-warning)]" aria-hidden="true" />
+          <h2 id="results-title" className="text-xl font-bold text-[var(--text-strong)] sm:text-2xl">
             {t(heading)}
           </h2>
-          <p className="max-w-full break-words text-xs text-fg-muted">
+          <p className="max-w-full break-words text-xs text-[var(--text-subtle)]">
             {result.completed ? t("levelComplete") : t("gameOver")} ·{" "}
             {MODE_LABELS[result.language][result.mode]} · {LANGUAGE_DEFINITIONS[result.language].nativeLabel}
           </p>
@@ -66,9 +64,9 @@ export function GameResults({ result, onRestart, heading = "results" }: GameResu
 
         <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3" data-testid="results-grid">
           {fields.map((field) => (
-            <div key={field.key} className="rounded-lg border border-line bg-bg-base/40 p-2.5" data-testid={field.testId}>
-              <dt className="text-[0.68rem] font-semibold tracking-wide text-fg-muted uppercase">{field.label}</dt>
-              <dd className="mt-0.5 text-base font-semibold text-fg tabular-nums" dir="ltr" lang={result.language}>
+            <div key={field.key} className="ts-result-tile" data-testid={field.testId}>
+              <dt className="ts-overline">{field.label}</dt>
+              <dd className="mt-0.5 text-base font-semibold text-[var(--text-strong)] ts-numeric" dir="ltr" lang={result.language}>
                 {field.value}
               </dd>
             </div>
@@ -76,24 +74,24 @@ export function GameResults({ result, onRestart, heading = "results" }: GameResu
         </div>
 
         <div className="mt-4">
-          <div className="mb-1.5 flex justify-between text-xs text-fg-secondary">
+          <div className="mb-1.5 flex justify-between text-xs text-[var(--text-default)]">
             <span>{t("accuracy")}</span>
-            <span className="tabular-nums">{Math.round(result.accuracy)}%</span>
+            <span className="ts-numeric">{Math.round(result.accuracy)}%</span>
           </div>
           <ProgressBar value={Math.max(0, Math.min(100, result.accuracy))} aria-label={t("accuracy")} />
         </div>
 
         <div className="mt-6 flex flex-col gap-2 sm:flex-row">
-          <Button type="button" className="flex-1" data-testid="restart-from-results" onClick={onRestart}>
+          <button type="button" className="ts-btn ts-btn-primary flex-1" data-testid="restart-from-results" onClick={onRestart}>
             <RotateCcw className="size-4" aria-hidden="true" />
             {t("restart")}
-          </Button>
+          </button>
           <Link href="/" className="ts-btn ts-btn-secondary flex-1" data-testid="back-home">
             <Home className="size-4" aria-hidden="true" />
             {t("backHome")}
           </Link>
         </div>
-      </Card>
+      </div>
     </motion.div>
   );
 }

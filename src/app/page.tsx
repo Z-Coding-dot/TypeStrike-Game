@@ -2,8 +2,8 @@
 
 import { motion, useReducedMotion } from "framer-motion";
 import {
+  ArrowUpRight,
   BookOpen,
-  Crosshair,
   Keyboard,
   Languages,
   MousePointer2,
@@ -17,10 +17,9 @@ import type { ReactNode } from "react";
 import { AdSlot } from "@/components/layout/AdSlot";
 import { Footer } from "@/components/layout/Footer";
 import { Header } from "@/components/layout/Header";
-import { LanguageSelector } from "@/components/settings/LanguageSelector";
 import { ModeSelector } from "@/components/settings/ModeSelector";
-import { Card } from "@/components/ui/Card";
 import { useI18n } from "@/hooks/useI18n";
+import { useLanguage } from "@/hooks/useLanguage";
 import type { UiTextKey } from "@/lib/i18n";
 
 const HOW_STEPS: ReadonlyArray<{ textKey: UiTextKey; icon: ReactNode }> = [
@@ -30,139 +29,193 @@ const HOW_STEPS: ReadonlyArray<{ textKey: UiTextKey; icon: ReactNode }> = [
 ];
 
 const FEATURES: ReadonlyArray<{ textKey: UiTextKey; icon: ReactNode }> = [
-  { textKey: "feature1", icon: <Zap size={18} /> },
-  { textKey: "feature2", icon: <Languages size={18} /> },
-  { textKey: "feature3", icon: <TrendingUp size={18} /> },
-  { textKey: "feature4", icon: <BookOpen size={18} /> },
+  { textKey: "feature1", icon: <Zap size={19} /> },
+  { textKey: "feature2", icon: <Languages size={19} /> },
+  { textKey: "feature3", icon: <TrendingUp size={19} /> },
+  { textKey: "feature4", icon: <BookOpen size={19} /> },
+];
+
+const PREVIEW_STATS: ReadonlyArray<{ labelKey: UiTextKey; value: string }> = [
+  { labelKey: "wpm", value: "72" },
+  { labelKey: "accuracy", value: "98%" },
+  { labelKey: "score", value: "1,280" },
 ];
 
 export default function HomePage() {
   const { t } = useI18n();
+  const { direction, language } = useLanguage();
   const reduceMotion = useReducedMotion();
+  const entrance = reduceMotion ? { opacity: 0 } : { opacity: 0, y: 14 };
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="flex min-h-dvh flex-col bg-[var(--layer-app)]" dir={direction} lang={language}>
       <Header />
 
-      <main className="mx-auto w-full max-w-[var(--max-content-width)] flex-1 px-4 pb-16 pt-10 sm:px-6 sm:pt-14 lg:px-8">
-        <motion.section
-          aria-labelledby="hero-title"
-          initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: reduceMotion ? 0 : 0.35, ease: "easeOut" }}
-          className="grid items-center gap-6 sm:gap-10 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]"
-        >
-          <div className="min-w-0 text-start">
-            <span className="ts-chip min-w-0 w-fit max-w-full border-[var(--border-glow)] text-[var(--color-primary)]">
-              <Crosshair aria-hidden="true" size={14} className="shrink-0" />
-              <span className="min-w-0 break-words">{t("brandTagline")}</span>
-            </span>
-            <h1
-              id="hero-title"
-              data-testid="hero-title"
-              className="ts-glow-text mt-5 break-words text-balance text-[clamp(1.75rem,6vw,3.25rem)] font-semibold leading-[1.15] text-[var(--text-primary)]"
+      <main className="flex-1">
+        <section className="ts-hero-stage" aria-labelledby="hero-title">
+          <div className="ts-page-container ts-hero-inner">
+            <motion.div
+              initial={entrance}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: reduceMotion ? 0 : 0.4, ease: "easeOut" }}
+              className="min-w-0 text-start"
             >
-              {t("heroTitle")}
-            </h1>
-            <p className="mt-4 max-w-xl text-pretty text-sm leading-relaxed text-[var(--text-secondary)] sm:text-base">
-              {t("heroDescription")}
-            </p>
+              <span className="ts-eyebrow-chip">
+                <span aria-hidden="true" className="ts-eyebrow-dot" />
+                {t("heroKicker")}
+              </span>
+              <h1
+                id="hero-title"
+                data-testid="hero-title"
+                className="ts-display-title mt-5 break-words text-balance"
+              >
+                {t("heroTitle")}
+              </h1>
+              <p className="ts-lead mt-5 text-pretty">{t("heroDescription")}</p>
 
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-3 sm:justify-start">
+              <div className="ts-hero-actions">
+                <Link
+                  href="/game"
+                  data-testid="play-now"
+                  className="ts-btn ts-btn-primary min-h-12 cursor-pointer px-7 focus-visible:outline-2 focus-visible:outline-offset-2"
+                >
+                  <Play aria-hidden="true" size={17} />
+                  {t("playNow")}
+                </Link>
+                <Link
+                  href="/about"
+                  className="ts-quiet-link focus-visible:outline-2 focus-visible:outline-offset-2"
+                >
+                  {t("about")}
+                  <ArrowUpRight aria-hidden="true" size={15} />
+                </Link>
+              </div>
+
+              <div className="ts-proof-row">
+                <span className="ts-proof-item">
+                  <Zap aria-hidden="true" size={14} />
+                  {t("feature1")}
+                </span>
+                <span className="ts-proof-item">
+                  <Languages aria-hidden="true" size={14} />
+                  {t("feature2")}
+                </span>
+                <span className="ts-proof-item">
+                  <ShieldCheck aria-hidden="true" size={14} />
+                  {t("feature4")}
+                </span>
+              </div>
+            </motion.div>
+
+            <motion.div
+              aria-hidden="true"
+              initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: reduceMotion ? 0 : 0.5, delay: reduceMotion ? 0 : 0.1, ease: "easeOut" }}
+              className="w-full max-w-lg lg:justify-self-end"
+            >
+              <div className="ts-preview-card">
+                <div className="ts-preview-head">
+                  <span dir="ltr" className="text-xs font-semibold tracking-wide text-[var(--text-strong)]">
+                    TypeStrike <span className="text-[var(--text-subtle)]">{"// live"}</span>
+                  </span>
+                  <span className="ts-chip">
+                    <span className="ts-eyebrow-dot" />
+                    {t("level")}
+                    <span dir="ltr" className="ts-numeric">03</span>
+                  </span>
+                </div>
+                <div className="ts-preview-window">
+                  <div className="ts-preview-radar" />
+                  <div className="ts-preview-beam" />
+                  <div className="ts-preview-target" dir="ltr">
+                    strike <span className="text-[var(--color-accent)]">target</span>
+                  </div>
+                  <div className="ts-preview-ship" />
+                </div>
+                <dl className="ts-preview-stats">
+                  {PREVIEW_STATS.map((stat) => (
+                    <div key={stat.labelKey} className="ts-preview-stat">
+                      <dt className="ts-overline">{t(stat.labelKey)}</dt>
+                      <dd dir="ltr" className="ts-numeric">{stat.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            </motion.div>
+          </div>
+        </section>
+
+        <div className="ts-page-container">
+          <section aria-labelledby="modes-heading" className="ts-section">
+            <div className="ts-section-head">
+              <p className="ts-overline">{t("quickStart")}</p>
+              <h2 id="modes-heading" className="ts-section-title">{t("gameModes")}</h2>
+              <p className="ts-section-subtitle">{t("feature1")}</p>
+            </div>
+            <div className="mt-6">
+              <ModeSelector variant="full" />
+            </div>
+          </section>
+
+          <section aria-labelledby="how-heading" className="ts-section">
+            <div className="ts-section-head">
+              <p className="ts-overline">{t("quickStart")}</p>
+              <h2 id="how-heading" className="ts-section-title">{t("howToPlay")}</h2>
+            </div>
+            <div className="ts-step-grid">
+              {HOW_STEPS.map((step, index) => (
+                <article key={step.textKey} className="ts-step-card">
+                  <div className="flex items-center gap-3">
+                    <span dir="ltr" className="ts-step-number ts-numeric">{index + 1}</span>
+                    <span aria-hidden="true" className="text-[var(--color-primary)]">{step.icon}</span>
+                  </div>
+                  <p className="text-pretty">{t(step.textKey)}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section aria-labelledby="features-heading" className="ts-section">
+            <div className="ts-section-head">
+              <p className="ts-overline">TypeStrike</p>
+              <h2 id="features-heading" className="ts-section-title">{t("features")}</h2>
+            </div>
+            <div className="ts-feature-grid">
+              {FEATURES.map((feature) => (
+                <article key={feature.textKey} className="ts-feature-card">
+                  <span aria-hidden="true" className="ts-feature-icon">{feature.icon}</span>
+                  <p className="text-pretty">{t(feature.textKey)}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section aria-labelledby="cta-heading" className="ts-section">
+            <div className="ts-cta-band">
+              <div className="min-w-0">
+                <h2 id="cta-heading" className="ts-cta-title">{t("ctaTitle")}</h2>
+                <p className="ts-lead mt-2 text-pretty">{t("ctaDescription")}</p>
+              </div>
               <Link
                 href="/game"
-                data-testid="play-now"
-                className="ts-btn ts-btn-primary min-h-12 w-full cursor-pointer justify-center px-6 text-sm transition-all duration-200 hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 sm:w-auto sm:px-7"
+                className="ts-btn ts-btn-primary min-h-12 cursor-pointer px-6 focus-visible:outline-2 focus-visible:outline-offset-2"
               >
                 <Play aria-hidden="true" size={17} />
                 {t("playNow")}
               </Link>
-              <div className="flex w-full min-w-0 flex-wrap items-center justify-center gap-2 sm:w-auto sm:justify-start">
-                <span className="text-xs font-medium text-[var(--text-muted)]">{t("language")}</span>
-                <LanguageSelector compact />
-              </div>
             </div>
-          </div>
+          </section>
 
-          <div
-            aria-hidden="true"
-            className="pointer-events-none relative mx-auto flex aspect-square size-[min(72vw,320px,100%)] max-w-full items-center justify-center"
-          >
-            <div className="absolute inset-0 rounded-full border border-[rgba(34,211,238,0.12)]" />
-            <div className="absolute inset-[12%] rounded-full border border-[rgba(59,130,246,0.2)]" />
-            <div className="absolute inset-[26%] rounded-full border border-dashed border-[rgba(139,92,246,0.28)]" />
-            <div className="absolute inset-y-0 start-1/2 w-px -translate-x-1/2 bg-[rgba(34,211,238,0.12)]" />
-            <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-[rgba(34,211,238,0.12)]" />
-            <div className="relative flex size-24 items-center justify-center rounded-full border-2 border-[var(--color-primary)] bg-[rgba(34,211,238,0.08)] shadow-[var(--shadow-glow-strong)]">
-              <Crosshair size={40} className="text-[var(--color-primary)]" />
-            </div>
-            <span className="absolute top-[14%] end-[6%] hidden rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2 py-1 text-[10px] font-semibold text-[var(--color-primary)] sm:block">
-              {t("wpm")}
-            </span>
-            <span className="absolute bottom-[14%] start-[6%] hidden rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2 py-1 text-[10px] font-semibold text-[var(--color-accent)] sm:block">
-              {t("accuracy")}
-            </span>
+          <div className="pb-4">
+            <AdSlot placement="content" />
           </div>
-        </motion.section>
+        </div>
 
-        <section aria-labelledby="modes-heading" className="mt-16 sm:mt-20">
-          <h2 id="modes-heading" className="text-xl font-semibold text-[var(--text-primary)] sm:text-2xl">
-            {t("gameModes")}
-          </h2>
-          <div className="mt-5">
-            <ModeSelector variant="full" />
-          </div>
-        </section>
-
-        <section aria-labelledby="how-heading" className="mt-16 sm:mt-20">
-          <h2 id="how-heading" className="text-xl font-semibold text-[var(--text-primary)] sm:text-2xl">
-            {t("howToPlay")}
-          </h2>
-          <div className="mt-5 grid gap-3 md:grid-cols-3">
-            {HOW_STEPS.map((step, index) => (
-              <Card key={step.textKey} className="h-full">
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex size-8 items-center justify-center rounded-md border border-[var(--border-subtle)] text-xs font-semibold text-[var(--color-primary)]">
-                    {index + 1}
-                  </span>
-                  <span aria-hidden="true" className="text-[var(--color-primary)]">
-                    {step.icon}
-                  </span>
-                </div>
-                <p className="mt-3 break-words text-sm leading-relaxed text-[var(--text-secondary)]">
-                  {t(step.textKey)}
-                </p>
-              </Card>
-            ))}
-          </div>
-        </section>
-
-        <section aria-labelledby="features-heading" className="mt-16 sm:mt-20">
-          <h2 id="features-heading" className="text-xl font-semibold text-[var(--text-primary)] sm:text-2xl">
-            {t("features")}
-          </h2>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {FEATURES.map((feature) => (
-              <Card key={feature.textKey} className="h-full">
-                <span aria-hidden="true" className="inline-flex size-9 items-center justify-center rounded-md bg-[rgba(34,211,238,0.08)] text-[var(--color-primary)]">
-                  {feature.icon}
-                </span>
-                <p className="mt-3 break-words text-sm leading-relaxed text-[var(--text-secondary)]">
-                  {t(feature.textKey)}
-                </p>
-              </Card>
-            ))}
-          </div>
-        </section>
-
-        <div className="mt-14">
-          <AdSlot placement="content" />
+        <div className="ts-page-container pb-8">
+          <AdSlot placement="bottom" />
         </div>
       </main>
-
-      <div className="mx-auto w-full max-w-[var(--max-content-width)] px-4 pb-8 sm:px-6 lg:px-8">
-        <AdSlot placement="bottom" />
-      </div>
 
       <Footer />
     </div>

@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence } from "framer-motion";
+import { Crosshair, Radio, ShieldCheck, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { Footer } from "@/components/layout/Footer";
 import { Header } from "@/components/layout/Header";
 import { AdSlot } from "@/components/layout/AdSlot";
+import { gameAudio } from "@/game/systems/AudioController";
 import { trackEvent } from "@/lib/analytics";
 import { consumeGameAutostart } from "@/lib/clientSession";
 import { useLanguage } from "@/hooks/useLanguage";
@@ -26,15 +27,18 @@ import { GameCanvas } from "./GameCanvas";
 import { GameHUD } from "./GameHUD";
 import { GameMenu } from "./GameMenu";
 import { GameOver } from "./GameResults";
-import { LevelComplete } from "./LevelComplete";
 import { PauseOverlay } from "./PauseOverlay";
 import { focusTypingInput, TypingInput } from "./TypingInput";
+import { useI18n } from "@/hooks/useI18n";
 
 const ACTIVE_STATUSES: GameStatus[] = ["playing", "paused", "level-complete"];
+const LEVEL_TRANSITION_DELAY_MS = 900;
+const LEVEL_NOTICE_DURATION_MS = 2_600;
 
 export function GameBoard() {
   const router = useRouter();
   const { direction, language: documentLanguage } = useLanguage();
+  const { t } = useI18n();
   const playSound = useSound();
   const speech = useSpeech();
 
@@ -52,9 +56,6 @@ export function GameBoard() {
   const feedback = useGameStore((state) => state.feedback);
   const speechNotice = useGameStore((state) => state.speechNotice);
   const result = useGameStore((state) => state.result);
-  const levelCompleted = useGameStore((state) => state.levelCompleted);
-
-  const setSpeechNotice = useGameStore((state) => state.setSpeechNotice);
 
   const [ready, setReady] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -62,6 +63,7 @@ export function GameBoard() {
   const [firing, setFiring] = useState(false);
   const [shotCount, setShotCount] = useState(0);
   const [impactCount, setImpactCount] = useState(0);
+  const [levelNotice, setLevelNotice] = useState<number | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<GameEngine | null>(null);
@@ -127,10 +129,12 @@ export function GameBoard() {
         }
       },
       onLevelComplete: (level) => {
+        gameAudio.cancelSpeech();
         const store = useGameStore.getState();
         store.setLevelCompleted(level);
         store.setStatus("level-complete");
         statusRef.current = "level-complete";
+        setLevelNotice(level + 1);
         soundRef.current("level-complete");
         trackEvent("level_reached", {
           level,
@@ -145,7 +149,9 @@ export function GameBoard() {
         store.setResult(finalResult);
         store.setStatus("game-over");
         statusRef.current = "game-over";
-        speechRef.current.cancel();
+        setLevelNotice(null);
+        gameAudio.cancelSpeech();
+        gameAudio.stopSounds();
         soundRef.current("game-over");
         // No typed text or keystroke data is ever included in analytics.
         trackEvent("game_complete", {
@@ -158,6 +164,7 @@ export function GameBoard() {
         });
       },
       onLifeLost: () => {
+        gameAudio.cancelSpeech();
         soundRef.current("life-lost");
         markFeedback("error");
       },
@@ -174,11 +181,12 @@ export function GameBoard() {
     const engine = engineRef.current;
     if (!engine) return;
     void (initRef.current ?? Promise.resolve()).then(() => {
-      speechRef.current.cancel();
+      gameAudio.stopAll();
       const store = useGameStore.getState();
       store.reset();
       store.setSession(mode, language);
       setErrorMessage(null);
+      setLevelNotice(null);
       setShotCount(0);
       setImpactCount(0);
       engine.restart();
@@ -205,6 +213,8 @@ export function GameBoard() {
     if (!container) return;
 
     let cancelled = false;
+    // A mode/language change builds a fresh engine; no audio may survive it.
+    gameAudio.stopAll();
     const engine = new GameEngine({
       container,
       mode,
@@ -215,6 +225,7 @@ export function GameBoard() {
     engineRef.current = engine;
     setReady(false);
     setRenderer("pending");
+    setLevelNotice(null);
 
     const initPromise = engine
       .init()
@@ -226,6 +237,7 @@ export function GameBoard() {
         store.reset();
         store.setSession(mode, language);
         setErrorMessage(null);
+        setLevelNotice(null);
         engine.start();
         trackEvent("game_start", { mode, language, reason: "settings_restart" });
         focusTypingInput();
@@ -251,6 +263,7 @@ export function GameBoard() {
         store.reset();
         store.setSession(mode, language);
         setErrorMessage(null);
+        setLevelNotice(null);
         engine.start();
         trackEvent("game_start", { mode, language, reason: "session_settings_changed" });
       });
@@ -262,8 +275,8 @@ export function GameBoard() {
       if (engineRef.current === engine) engineRef.current = null;
       try {
         engine.destroy();
-      } catch {
-        // A destroy during a pending init is safe to ignore.
+      } catch (error) {
+        console.error("TypeStrike: game engine cleanup failed", error);
       }
     };
   }, [mode, language, sessionKey]);
@@ -277,16 +290,39 @@ export function GameBoard() {
     };
   }, []);
 
+  // Level changes are automatic. The notice is informational only; it never
+  // blocks input and never requires a button press.
+  useEffect(() => {
+    if (levelNotice === null) return;
+
+    const advanceTimer = window.setTimeout(() => {
+      const store = useGameStore.getState();
+      if (store.status !== "level-complete") return;
+      store.setLevelCompleted(null);
+      store.setInputValue("");
+      engineRef.current?.advanceLevel();
+      statusRef.current = "playing";
+      focusTypingInput();
+    }, LEVEL_TRANSITION_DELAY_MS);
+
+    const noticeTimer = window.setTimeout(() => setLevelNotice(null), LEVEL_NOTICE_DURATION_MS);
+
+    return () => {
+      window.clearTimeout(advanceTimer);
+      window.clearTimeout(noticeTimer);
+    };
+  }, [levelNotice]);
+
   // Keep engine settings in sync with the settings panel.
   useEffect(() => {
     engineRef.current?.updateSettings(settings);
-    if (!speechEnabled) speechRef.current.cancel();
+    if (!speechEnabled) gameAudio.cancelSpeech();
   }, [settings, speechEnabled]);
 
   // Surface speech availability problems through the game store notice area.
   useEffect(() => {
-    setSpeechNotice(speech.notice);
-  }, [speech.notice, setSpeechNotice]);
+    useGameStore.getState().setSpeechNotice(speech.notice);
+  }, [speech.notice]);
 
   useEffect(() => {
     trackEvent("mode_select", { mode });
@@ -302,7 +338,7 @@ export function GameBoard() {
     return () => {
       if (feedbackTimerRef.current !== null) window.clearTimeout(feedbackTimerRef.current);
       if (firingTimerRef.current !== null) window.clearTimeout(firingTimerRef.current);
-      speechRef.current.cancel();
+      gameAudio.stopAll();
     };
   }, []);
 
@@ -311,11 +347,12 @@ export function GameBoard() {
     if (!engine || !initRef.current) return;
     try {
       await initRef.current;
-      speechRef.current.cancel();
+      gameAudio.stopAll();
       const store = useGameStore.getState();
       store.reset();
       store.setSession(mode, language);
       setErrorMessage(null);
+      setLevelNotice(null);
       setShotCount(0);
       setImpactCount(0);
       engine.start();
@@ -342,6 +379,7 @@ export function GameBoard() {
     const current = statusRef.current;
     if (current === "playing") {
       engine.pause();
+      gameAudio.cancelSpeech();
       statusRef.current = "paused";
     } else if (current === "paused") {
       engine.resume();
@@ -350,85 +388,145 @@ export function GameBoard() {
     }
   }, []);
 
-  const nextLevel = useCallback(() => {
-    const store = useGameStore.getState();
-    store.setLevelCompleted(null);
-    store.setFeedback("idle");
-    engineRef.current?.advanceLevel();
-    statusRef.current = "playing";
-    focusTypingInput();
-  }, []);
-
   const quitToHome = useCallback(() => {
-    speechRef.current.cancel();
+    gameAudio.stopAll();
     useGameStore.getState().reset();
     router.push("/");
   }, [router]);
 
   return (
-    <div className="flex min-h-dvh flex-col" dir={direction} lang={documentLanguage} data-testid="game-page">
+    <div
+      className="ts-game-page-shell flex min-h-dvh flex-col"
+      dir={direction}
+      lang={documentLanguage}
+      data-testid="game-page"
+    >
       <Header />
-      <main className="mx-auto w-full max-w-[var(--max-content-width)] flex-1 px-3 py-4 sm:px-5 sm:py-6 lg:px-8">
-        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,200px)_minmax(0,1fr)_minmax(0,200px)] xl:grid-cols-[minmax(0,230px)_minmax(0,1fr)_minmax(0,230px)]">
-          <div className="hidden lg:block">
-            <AdSlot placement="sidebar-left" />
+
+      <main className="ts-game-main flex-1">
+        <div className="ts-page-container py-4 sm:py-6 lg:py-8">
+          <div className="ts-game-heading">
+            <div className="min-w-0">
+              <span className="ts-eyebrow-chip">
+                <Crosshair aria-hidden="true" size={13} />
+                {t("brandTagline")}
+              </span>
+              <h1 className="ts-game-title mt-3 break-words text-balance">{t("gamePageTitle")}</h1>
+              <p className="ts-lead mt-2 max-w-xl text-pretty">{t("gamePageSubtitle")}</p>
+            </div>
+            <span className="ts-game-live" aria-hidden="true">
+              <Radio size={13} />
+              {t("live")}
+            </span>
           </div>
 
-          <div className="flex min-w-0 flex-col gap-3 sm:gap-4">
-            <GameHUD
-              status={status}
-              speechNotice={speechNotice}
-              errorMessage={errorMessage}
-              onPauseToggle={togglePause}
-            />
+          <div className="ts-game-grid mt-5 sm:mt-6">
+            <aside className="ts-game-rail hidden lg:block" aria-hidden="true">
+              <div className="ts-rail-note">
+                <span className="ts-feature-icon">
+                  <Crosshair size={18} />
+                </span>
+                <p className="mt-3 text-sm font-semibold text-[var(--text-strong)]">{t("missionBrief")}</p>
+                <p className="mt-2 text-xs leading-relaxed text-[var(--text-subtle)]">{t("noPreselect")}</p>
+              </div>
+              <AdSlot placement="sidebar-left" />
+            </aside>
 
-            <div className="relative min-w-0">
-              <GameCanvas
-                containerRef={containerRef}
-                targets={targets}
+            <div className="ts-play-column flex min-w-0 flex-col gap-3 sm:gap-4">
+              <GameHUD
                 status={status}
-                feedback={feedback}
-                firing={firing}
-                shotCount={shotCount}
-                impactCount={impactCount}
-                renderer={renderer}
-                score={stats.score}
-                level={stats.level}
-                lives={stats.lives}
+                speechNotice={speechNotice}
+                errorMessage={errorMessage}
+                onPauseToggle={togglePause}
               />
+
+              <div className="ts-stage-wrap relative min-w-0">
+                <GameCanvas
+                  containerRef={containerRef}
+                  targets={targets}
+                  status={status}
+                  feedback={feedback}
+                  firing={firing}
+                  shotCount={shotCount}
+                  impactCount={impactCount}
+                  renderer={renderer}
+                  score={stats.score}
+                  level={stats.level}
+                  lives={stats.lives}
+                />
+
+                {levelNotice !== null ? (
+                  <div
+                    data-testid="level-notice"
+                    role="status"
+                    aria-live="polite"
+                    className="ts-level-notice pointer-events-none absolute inset-x-0 top-1/2 z-30 mx-auto flex w-fit -translate-y-1/2 items-center gap-2 rounded-[var(--radius-md)] px-4 py-2.5 text-sm font-semibold text-[var(--text-strong)]"
+                  >
+                    <Sparkles aria-hidden="true" size={16} />
+                    <span>{t("enteringLevel")}</span>
+                    <span dir="ltr" className="ts-numeric text-[var(--color-primary)]">
+                      {levelNotice}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="ts-game-guide flex flex-wrap items-center gap-x-4 gap-y-1" data-testid="game-guide">
+                <span className="ts-proof-item">
+                  <ShieldCheck aria-hidden="true" size={14} />
+                  {t("howStep3")}
+                </span>
+                <span className="ts-proof-item">
+                  <KeyboardHint />
+                  {t("inputHint")}
+                </span>
+              </div>
+
+              {/* Real input, visually hidden: keeps IMEs, screen readers and mobile keyboards working. */}
+              <TypingInput onTyping={handleTyping} onEscape={togglePause} />
+
+              <div className="w-full lg:hidden">
+                <AdSlot placement="bottom" />
+              </div>
             </div>
 
-            {/* Real input, visually hidden: keeps IMEs, screen readers and mobile keyboards working. */}
-            <TypingInput onTyping={handleTyping} onEscape={togglePause} />
-
-            <div className="w-full lg:hidden">
-              <AdSlot placement="bottom" />
-            </div>
-          </div>
-
-          <div className="hidden lg:block">
-            <AdSlot placement="sidebar-right" />
+            <aside className="ts-game-rail hidden lg:block" aria-hidden="true">
+              <AdSlot placement="sidebar-right" />
+              <div className="ts-rail-note ts-rail-note-compact">
+                <span className="ts-eyebrow-dot" />
+                <p className="mt-3 text-xs leading-relaxed text-[var(--text-subtle)]">{t("typeHere")}</p>
+              </div>
+            </aside>
           </div>
         </div>
       </main>
-      <Footer />
 
       <AnimatePresence>
         {status === "menu" ? (
-          <div key="menu" className="fixed inset-0 z-20 overflow-y-auto bg-bg-base/95 p-3 backdrop-blur-sm sm:p-6">
+          <div key="menu" className="ts-menu-backdrop fixed inset-0 z-20 overflow-y-auto p-3 backdrop-blur-sm sm:p-6">
             <GameMenu onStart={() => void startGame()} ready={ready} />
           </div>
         ) : null}
         {status === "paused" ? (
           <PauseOverlay key="pause" onResume={togglePause} onRestart={restartGame} onQuit={quitToHome} />
         ) : null}
-        {status === "level-complete" && levelCompleted !== null ? (
-          <LevelComplete key="level-complete" level={levelCompleted} onNext={nextLevel} />
-        ) : null}
         {status === "game-over" && result ? (
           <GameOver key="game-over" result={result} onRestart={restartGame} />
         ) : null}
       </AnimatePresence>
     </div>
+  );
+}
+
+/** Tiny visual cue that does not duplicate the hidden keyboard control. */
+function KeyboardHint() {
+  return (
+    <kbd
+      aria-hidden="true"
+      dir="ltr"
+      className="ts-kbd"
+    >
+      ESC
+    </kbd>
   );
 }

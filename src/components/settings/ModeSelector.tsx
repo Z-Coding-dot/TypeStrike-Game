@@ -50,7 +50,7 @@ export function ModeSelector({ variant = "full", className = "" }: ModeSelectorP
                 "ts-chip min-h-11 cursor-pointer px-3 transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2",
                 selected
                   ? "ts-chip-active"
-                  : "hover:border-[var(--border-glow)] hover:text-[var(--text-primary)]",
+                  : "hover:border-[var(--border-accent)] hover:text-[var(--text-strong)]",
               ].join(" ")}
             >
               {selected ? <Check aria-hidden="true" size={14} /> : null}
@@ -66,27 +66,25 @@ export function ModeSelector({ variant = "full", className = "" }: ModeSelectorP
             aria-pressed={selected}
             data-testid={`mode-${mode}`}
             onClick={() => setMode(mode)}
-            style={
-              selected
-                ? { borderColor: "var(--color-primary)", boxShadow: "var(--shadow-glow)" }
-                : undefined
-            }
             className={[
               "ts-card group flex min-h-44 w-full min-w-0 cursor-pointer flex-col items-start gap-3 p-4 text-start",
-              "transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-[var(--shadow-glow)]",
+              "transition-colors duration-200 hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)]",
               "focus-visible:outline-2 focus-visible:outline-offset-2",
-            ].join(" ")}
+              selected ? "border-[var(--border-accent)]" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
           >
-            <span className="inline-flex size-10 items-center justify-center rounded-md border border-[var(--border-subtle)] bg-[rgba(34,211,238,0.08)] text-[var(--color-primary)]">
+            <span className="inline-flex size-10 items-center justify-center rounded-md border border-[var(--border-default)] bg-[var(--surface-selected)] text-[var(--color-primary)]">
               <Icon aria-hidden="true" size={20} />
             </span>
             <span className="flex w-full items-center gap-2">
-              <span className="min-w-0 text-sm font-semibold text-[var(--text-primary)]">{label}</span>
+              <span className="min-w-0 text-sm font-semibold text-[var(--text-strong)]">{label}</span>
               {selected ? (
                 <Check aria-hidden="true" size={16} className="ms-auto shrink-0 text-[var(--color-primary)]" />
               ) : null}
             </span>
-            <span className="min-w-0 text-sm leading-relaxed text-[var(--text-secondary)]">
+            <span className="min-w-0 text-sm leading-relaxed text-[var(--text-default)]">
               {description}
             </span>
           </button>

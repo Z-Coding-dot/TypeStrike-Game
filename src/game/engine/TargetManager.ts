@@ -9,7 +9,8 @@ import { MODE_TO_TARGET_KIND } from "@/types/game";
 import type { GameMode, LevelConfig, TargetData, TargetKind } from "@/types/game";
 import type { LanguageCode } from "@/types/language";
 import { clamp } from "@/lib/constants";
-import { calculateLaneCenters } from "@/game/systems/CollisionSystem";
+import { calculateLaneCenters, hasCrossedDangerBoundary } from "@/game/systems/CollisionSystem";
+import { TARGET_HALF_HEIGHT } from "@/game/systems/GameGeometry";
 import {
   DEFAULT_DIFFICULTY_CONFIG,
   difficultyWeightsForComplexity,
@@ -69,7 +70,8 @@ export interface TargetManagerBounds {
   width: number;
   height: number;
   topY: number;
-  dangerY: number;
+  /** Bottom-edge boundary; targets may pass the ship before crossing it. */
+  gameOverY: number;
 }
 
 export interface TargetManagerOptions {
@@ -85,7 +87,6 @@ export interface TargetManagerOptions {
 }
 
 const MIN_VERTICAL_GAP = 56;
-const TARGET_HALF_HEIGHT = 18;
 const MAX_FRAME_DELTA_MS = 100;
 
 /**
@@ -146,13 +147,35 @@ export class TargetManager {
     this.emitTargets();
   }
 
-  /** Freezes a completed target until the projectile impact finalizes it. */
+  /** Freezes a target until its projectile impact finalizes the shot. */
   markDestroying(id: string): boolean {
     const target = this.targets.find((item) => item.id === id);
-    if (!target) return false;
+    if (!target || this.destroying.has(id) || target.destroying) return false;
     this.destroying.add(id);
     target.destroying = true;
     return true;
+  }
+
+  /**
+   * Applies one successful letter shot: one grapheme is gone, but the target
+   * remains alive and moving until every grapheme has been shot.
+   */
+  applyLetterShot(
+    id: string,
+    remainingText: string,
+    remainingGraphemes: number,
+  ): TargetData | null {
+    const target = this.targets.find((item) => item.id === id);
+    if (!target) return null;
+
+    target.text = remainingText;
+    target.displayText = remainingText;
+    target.remainingGraphemes = remainingGraphemes;
+    target.matchedGraphemes = 0;
+    target.destroying = false;
+    this.destroying.delete(id);
+    this.emitTargets();
+    return { ...target };
   }
 
   /** Advances all targets and spawns new ones when the level still needs them. */
@@ -171,7 +194,8 @@ export class TargetManager {
 
     const escaped = this.targets.filter(
       (target) =>
-        !this.destroying.has(target.id) && target.y + TARGET_HALF_HEIGHT >= this.bounds.dangerY,
+        !this.destroying.has(target.id) &&
+        hasCrossedDangerBoundary(target.y, this.bounds.gameOverY, TARGET_HALF_HEIGHT),
     );
 
     if (escaped.length > 0) {
@@ -235,6 +259,18 @@ export class TargetManager {
 
     target.matchedGraphemes = next;
     this.emitTargets();
+  }
+
+  /** Clears stale prefixes from targets other than the active one. */
+  clearOtherMatches(activeId: string): void {
+    let changed = false;
+    for (const target of this.targets) {
+      if (target.id !== activeId && target.matchedGraphemes !== 0) {
+        target.matchedGraphemes = 0;
+        changed = true;
+      }
+    }
+    if (changed) this.emitTargets();
   }
 
   clearMatched(): void {
@@ -312,6 +348,9 @@ export class TargetManager {
       y: spawnY,
       speed,
       matchedGraphemes: 0,
+      displayText: text,
+      baseText: text,
+      ...(this.kind === "letter" ? { remainingGraphemes: graphemeLength(text) } : {}),
     };
   }
 

@@ -15,11 +15,11 @@ export function MetricCard({ metric }: { metric: AdminMetric }) {
   return (
     <Card className="p-4" data-testid={`metric-card-${metric.id}`}>
       <dl>
-        <dt className="flex min-w-0 items-center gap-2 text-xs font-semibold tracking-wide text-fg-muted uppercase [overflow-wrap:anywhere]">
-          <BarChart3 className="size-3.5 text-primary" aria-hidden="true" />
+        <dt className="ts-overline flex min-w-0 items-center gap-2 [overflow-wrap:anywhere]">
+          <BarChart3 className="size-3.5 shrink-0 text-primary" aria-hidden="true" />
           {label}
         </dt>
-        <dd className="mt-2 text-2xl font-bold tabular-nums text-fg ts-glow-text">{displayValue}</dd>
+        <dd dir="ltr" className="ts-numeric mt-2 text-2xl font-semibold text-fg">{displayValue}</dd>
       </dl>
       {metric.hint ? <p className="mt-1 text-[0.7rem] text-fg-muted">{metric.hint}</p> : null}
     </Card>
