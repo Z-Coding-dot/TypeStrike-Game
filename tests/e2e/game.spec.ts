@@ -80,24 +80,49 @@ test("active HUD stays minimal and the typing input is unobtrusive", async ({ pa
   await expect(page.getByTestId("typing-card")).toHaveCount(0);
 });
 
-test("level completion advances to the next level", async ({ page }) => {
+test("level completion advances automatically with a non-blocking notice", async ({ page }) => {
   await startGame(page, "words");
   await expect.poll(() => readStat(page, "level")).toBe(1);
 
   // Level 1 requires six destroyed word targets. Each shot is awaited so a
   // frozen target is never typed twice before its projectile lands.
   for (let attempt = 0; attempt < 12; attempt += 1) {
-    if ((await page.getByTestId("level-complete").count()) > 0) break;
+    const scene = page.getByTestId("game-scene");
+    if (
+      (await scene.getAttribute("data-status")) === "level-complete" ||
+      (await page.getByTestId("level-notice").count()) > 0
+    ) {
+      break;
+    }
     const target = page.getByTestId("target-item").first();
     await expect(target).toBeVisible({ timeout: 20_000 });
     await typeAndDestroy(page, (await target.innerText()).trim());
   }
 
-  await expect(page.getByTestId("level-complete")).toBeVisible({ timeout: 10_000 });
-  await page.getByTestId("next-level").click();
+  const notice = page.getByTestId("level-notice");
+  await expect(notice).toBeVisible({ timeout: 10_000 });
+  await expect(notice).toContainText("Entering level");
+  await expect(notice).toContainText("2");
   await expect.poll(() => readStat(page, "level")).toBe(2);
   await expect(page.getByTestId("level-complete")).toHaveCount(0);
+  await expect(page.getByTestId("next-level")).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByTestId("typing-input")).toBeAttached();
+  await expect(page.getByTestId("typing-input")).toBeFocused();
+});
+
+test("targets are never preselected or prefix-highlighted", async ({ page }) => {
+  await startGame(page, "words");
+  const target = page.getByTestId("target-item").first();
+  await expect(target).toBeVisible({ timeout: 20_000 });
+
+  const readClass = async () => (await target.getAttribute("class")) ?? "";
+  expect(await readClass()).not.toContain("text-[var(--color-primary)]");
+  expect(await readClass()).not.toContain("font-semibold");
+
+  await typeTarget(page, (await target.innerText()).trim().slice(0, 1));
+  expect(await readClass()).not.toContain("text-[var(--color-primary)]");
+  expect(await readClass()).not.toContain("font-semibold");
 });
 
 test("correct typing fires a visible shot before scoring on impact", async ({ page }) => {
@@ -136,15 +161,35 @@ test("shoot and impact sounds are requested as separate effects", async ({ page 
   await expect.poll(() => requests.includes("impact.wav")).toBe(true);
 });
 
-test("incorrect typing does not award points", async ({ page }) => {
+test("incorrect typing does not award points and does not lock the input", async ({ page }) => {
   await startGame(page, "words");
-  await expect(page.getByTestId("target-item").first()).toBeVisible({ timeout: 20_000 });
+  const target = page.getByTestId("target-item").first();
+  await expect(target).toBeVisible({ timeout: 20_000 });
   const before = await readStat(page, "score");
 
   await typeTarget(page, "zzzzzz-definitely-not-a-target");
   await page.waitForTimeout(500);
-
   expect(await readStat(page, "score")).toBe(before);
+
+  // The invalid value must be released; the next correct word still fires.
+  const targetText = (await target.innerText()).trim();
+  await typeAndDestroy(page, targetText);
+  expect(await readStat(page, "score")).toBeGreaterThan(before);
+});
+
+test("game initializes and accepts typing when animations are disabled", async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.goto("/settings");
+  const toggle = page.getByTestId("settings-animations");
+  await expect(toggle).toHaveAttribute("aria-checked", "true");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+
+  await startGame(page, "words");
+  await expect(page.getByTestId("game-error")).toHaveCount(0);
+  const target = page.getByTestId("target-item").first();
+  await expect(target).toBeVisible({ timeout: 20_000 });
+  await typeAndDestroy(page, (await target.innerText()).trim());
 });
 
 test("targets reaching the ship remove a life, and three losses trigger game over", async ({ page }) => {
@@ -210,4 +255,56 @@ test("canvas reports a usable renderer and hides ad placeholder text", async ({ 
     });
     expect(hidden).toBe(true);
   }
+});
+
+test("letter mode fires exactly one bullet for one correct letter", async ({ page }) => {
+  await startGame(page, "letters");
+  await expect(page.getByTestId("target-item").first()).toBeVisible({ timeout: 20_000 });
+
+  const scoreBefore = await readStat(page, "score");
+  const shotsBefore = await readStat(page, "shot-count");
+  const impactsBefore = await readStat(page, "impact-count");
+  const letter = (await page.getByTestId("target-item").first().innerText()).trim().slice(0, 1);
+
+  await typeTarget(page, letter);
+  await expect.poll(() => readStat(page, "shot-count")).toBe(shotsBefore + 1);
+  await expect.poll(() => readStat(page, "impact-count")).toBe(impactsBefore + 1);
+  await expect.poll(() => readStat(page, "score")).toBeGreaterThan(scoreBefore);
+
+  await page.waitForTimeout(350);
+  expect(await readStat(page, "shot-count")).toBe(shotsBefore + 1);
+  expect(await readStat(page, "impact-count")).toBe(impactsBefore + 1);
+  expect(await readStat(page, "score")).toBeGreaterThan(scoreBefore);
+});
+
+for (const mode of ["words", "sentences"] as const) {
+  test(`${mode} mode fires only after the full text and fires once`, async ({ page }) => {
+    await startGame(page, mode);
+    const target = page.getByTestId("target-item").first();
+    await expect(target).toBeVisible({ timeout: 20_000 });
+    const text = (await target.innerText()).trim();
+    const graphemes = Array.from(text);
+    expect(graphemes.length).toBeGreaterThan(1);
+
+    const shotsBefore = await readStat(page, "shot-count");
+    const impactsBefore = await readStat(page, "impact-count");
+    await typeTarget(page, graphemes[0]);
+    await page.waitForTimeout(150);
+    expect(await readStat(page, "shot-count")).toBe(shotsBefore);
+
+    await typeTarget(page, graphemes.slice(1).join(""));
+    await expect.poll(() => readStat(page, "shot-count")).toBe(shotsBefore + 1);
+    await expect.poll(() => readStat(page, "impact-count")).toBe(impactsBefore + 1);
+    await page.waitForTimeout(350);
+    expect(await readStat(page, "shot-count")).toBe(shotsBefore + 1);
+    expect(await readStat(page, "impact-count")).toBe(impactsBefore + 1);
+  });
+}
+
+test("sentence targets wrap instead of being clipped", async ({ page }) => {
+  await startGame(page, "sentences");
+  const target = page.getByTestId("target-item").first();
+  await expect(target).toBeVisible({ timeout: 20_000 });
+  await expect(target).toHaveClass(/whitespace-normal/);
+  expect(await target.textContent()).toBe((await target.innerText()).trim());
 });

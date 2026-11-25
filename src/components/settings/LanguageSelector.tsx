@@ -41,14 +41,14 @@ export function LanguageSelector({ compact = false, className = "" }: LanguageSe
               "ts-chip min-h-11 cursor-pointer px-3 transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2",
               selected
                 ? "ts-chip-active"
-                : "hover:border-[var(--border-glow)] hover:text-[var(--text-primary)]",
+                : "hover:border-[var(--border-accent)] hover:text-[var(--text-strong)]",
             ].join(" ")}
           >
             <span dir={definition.direction} lang={code} className="whitespace-nowrap">
               {definition.nativeLabel}
             </span>
             {code !== "en" && !compact ? (
-              <span dir="ltr" className={`whitespace-nowrap ${selected ? "opacity-85" : "text-[var(--text-muted)]"}`}>
+              <span dir="ltr" className={`whitespace-nowrap ${selected ? "opacity-85" : "text-[var(--text-subtle)]"}`}>
                 {definition.label}
               </span>
             ) : null}

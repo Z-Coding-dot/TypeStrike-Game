@@ -43,6 +43,12 @@ export interface TargetData {
   matchedGraphemes: number;
   /** A completed target stays frozen until the projectile reaches it. */
   destroying?: boolean;
+  /** Letter mode: grapheme clusters not yet removed by successful shots. */
+  remainingGraphemes?: number;
+  /** Letter mode: text still visible after earlier shots. */
+  displayText?: string;
+  /** Original text, used for scoring and speech after partial letter shots. */
+  baseText?: string;
 }
 
 export interface TypingAttemptResult {

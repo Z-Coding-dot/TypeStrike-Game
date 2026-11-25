@@ -2,6 +2,7 @@ import * as Phaser from "phaser";
 import type { LanguageCode } from "@/types/language";
 import type { TargetData } from "@/types/game";
 import { clamp } from "@/lib/constants";
+import { getGameArenaGeometry, SHIP_SCALE } from "@/game/systems/GameGeometry";
 
 const COLORS = {
   background: 0x050b14,
@@ -9,11 +10,10 @@ const COLORS = {
   primary: 0x22d3ee,
   secondary: 0x3b82f6,
   accent: 0x8b5cf6,
-  danger: 0xf87171,
   text: "#F1F5F9",
 } as const;
 
-const STAR_COUNT = 70;
+const STAR_COUNT = 64;
 const MAX_EXPLOSION_PARTICLES = 10;
 
 export interface GameSceneCallbacks {
@@ -31,17 +31,19 @@ export interface GameSceneCallbacks {
 
 interface TargetVisual {
   container: Phaser.GameObjects.Container;
-  frame: Phaser.GameObjects.Graphics;
   label: Phaser.GameObjects.Text;
-  progress: Phaser.GameObjects.Graphics;
   text: string;
-  matched: number;
   language: LanguageCode;
 }
 
+interface ActiveProjectile {
+  target: TargetData;
+  final: boolean;
+}
+
 /**
- * Phaser rendering layer only. Game rules live in GameEngine/TargetManager;
- * this scene draws the neon arcade presentation and forwards frame deltas.
+ * Phaser rendering layer only. Rules live in GameEngine/TargetManager; this
+ * scene draws the arena, the ship and one visible projectile per settled shot.
  */
 export class GameScene extends Phaser.Scene {
   private readonly callbacks: GameSceneCallbacks;
@@ -49,11 +51,15 @@ export class GameScene extends Phaser.Scene {
   private language: LanguageCode = "en";
   private animationsEnabled = true;
   private paused = false;
+  /**
+   * Phaser injects `add`, `tweens`, `scale`, etc. during boot. Settings can be
+   * applied before that happens, so every system-touching method must wait.
+   */
+  private systemsReady = false;
   private width = 960;
   private height = 600;
 
   private background!: Phaser.GameObjects.Rectangle;
-  private dangerLine!: Phaser.GameObjects.Graphics;
   private ship!: Phaser.GameObjects.Container;
   private shipGlow!: Phaser.GameObjects.Arc;
   private stars: Phaser.GameObjects.Arc[] = [];
@@ -62,6 +68,7 @@ export class GameScene extends Phaser.Scene {
   private readonly visuals = new Map<string, TargetVisual>();
   private readonly dyingTargets = new Set<string>();
   private readonly projectiles = new Set<Phaser.GameObjects.Graphics>();
+  private readonly projectileTargets = new Map<Phaser.GameObjects.Graphics, ActiveProjectile>();
 
   constructor(callbacks: GameSceneCallbacks) {
     super({ key: "TypeStrikeGame" });
@@ -69,28 +76,27 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
-    const { width, height } = this.scale.gameSize;
-    this.width = Math.max(280, width);
-    this.height = Math.max(240, height);
+    const geometry = getGameArenaGeometry(this.scale.gameSize.width, this.scale.gameSize.height);
+    this.width = geometry.width;
+    this.height = geometry.height;
+    this.systemsReady = true;
 
     this.background = this.add.rectangle(0, 0, this.width, this.height, COLORS.background);
     this.background.setOrigin(0);
 
     this.drawStarfield();
-    this.dangerLine = this.add.graphics();
-    this.drawDangerLine(COLORS.primary, 0.28);
     this.drawShip();
 
     this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
     this.events.once("shutdown", this.cleanup, this);
+
+    this.applyPauseState();
     this.callbacks.onResize(this.width, this.height);
     this.callbacks.onReady();
   }
 
   update(_time: number, delta: number): void {
-    if (!this.paused) {
-      this.callbacks.onFrame(delta);
-    }
+    if (!this.paused) this.callbacks.onFrame(delta);
     this.syncTargets(this.callbacks.getTargets());
   }
 
@@ -103,13 +109,20 @@ export class GameScene extends Phaser.Scene {
   setAnimationsEnabled(enabled: boolean): void {
     if (this.animationsEnabled === enabled) return;
     this.animationsEnabled = enabled;
+    if (!this.systemsReady) return;
+    this.applyAnimationsSetting();
+  }
 
-    if (!enabled) {
+  private applyAnimationsSetting(): void {
+    if (!this.animationsEnabled) {
+      // Kill tweens only after their projectiles have reported impact; the
+      // tween completion is the sole impact signal for a shot in flight.
+      this.finishProjectiles();
       this.idleTween?.stop();
       this.idleTween = null;
       this.shipGlow?.setAlpha(0.2);
       this.tweens.killAll();
-    } else if (this.ship) {
+    } else {
       this.startIdleTween();
     }
   }
@@ -117,41 +130,57 @@ export class GameScene extends Phaser.Scene {
   setPaused(paused: boolean): void {
     if (this.paused === paused) return;
     this.paused = paused;
-    if (paused) this.tweens.pauseAll();
+    if (!this.systemsReady) return;
+    this.applyPauseState();
+  }
+
+  private applyPauseState(): void {
+    if (!this.systemsReady) return;
+    if (this.paused) this.tweens.pauseAll();
     else this.tweens.resumeAll();
   }
 
-  /** Visual firing sequence. Rules and stats are already settled by the engine. */
-  playDestroy(target: TargetData): void {
-    const visual = this.visuals.get(target.id);
-    const destination = { x: target.x, y: target.y };
-
+  /**
+   * Visual firing sequence for exactly one settled shot. `final` is false for
+   * an intermediate letter shot: its target survives and loses one grapheme.
+   */
+  playDestroy(target: TargetData, final = true): void {
     this.callbacks.onShotFired?.(target);
 
+    // Settings or a renderer swap can settle a shot before the scene exists.
+    if (!this.systemsReady) {
+      this.callbacks.onShotImpact?.(target);
+      return;
+    }
+
     if (!this.animationsEnabled) {
-      if (visual) this.destroyVisual(target.id);
+      if (final) this.destroyVisual(target.id);
       this.callbacks.onShotImpact?.(target);
       return;
     }
 
     this.dyingTargets.add(target.id);
+    const geometry = getGameArenaGeometry(this.width, this.height);
     const originX = this.ship?.x ?? this.width / 2;
-    const originY = (this.ship?.y ?? this.height - 56) - 18;
+    const originY = (this.ship?.y ?? geometry.shipY) - 18 * SHIP_SCALE;
+    const destination = { x: target.x, y: target.y };
 
     const projectile = this.add.graphics();
     this.projectiles.add(projectile);
+    this.projectileTargets.set(projectile, { target, final });
     projectile.fillStyle(COLORS.primary, 1);
-    projectile.fillCircle(0, 0, 4);
-    projectile.fillStyle(COLORS.secondary, 0.35);
-    projectile.fillCircle(0, 0, 9);
+    projectile.fillCircle(0, 0, 3.5);
+    projectile.fillStyle(COLORS.secondary, 0.32);
+    projectile.fillCircle(0, 0, 8);
     projectile.setPosition(originX, originY);
 
     if (this.ship) {
-      this.ship.y += 4;
+      const recoil = 3 * SHIP_SCALE;
+      this.ship.y += recoil;
       this.tweens.add({
         targets: this.ship,
-        y: this.height - 56,
-        duration: 180,
+        y: geometry.shipY,
+        duration: 150,
         ease: "Quad.easeOut",
       });
     }
@@ -163,19 +192,33 @@ export class GameScene extends Phaser.Scene {
       duration: 230,
       ease: "Quad.easeIn",
       onComplete: () => {
-        this.projectiles.delete(projectile);
-        projectile.destroy();
+        this.removeProjectile(projectile);
         this.spawnExplosion(destination.x, destination.y);
-        this.destroyVisual(target.id);
+        if (final) this.destroyVisual(target.id);
         this.dyingTargets.delete(target.id);
         this.callbacks.onShotImpact?.(target);
       },
     });
   }
 
+  /** Reports and removes every projectile still travelling. */
+  private finishProjectiles(): void {
+    for (const projectile of Array.from(this.projectiles)) {
+      const shot = this.projectileTargets.get(projectile);
+      this.removeProjectile(projectile);
+      this.dyingTargets.delete(shot?.target.id ?? "");
+      if (shot) this.callbacks.onShotImpact?.(shot.target);
+    }
+  }
+
+  private removeProjectile(projectile: Phaser.GameObjects.Graphics): void {
+    this.projectiles.delete(projectile);
+    this.projectileTargets.delete(projectile);
+    projectile.destroy();
+  }
+
   playLifeLost(): void {
-    if (!this.animationsEnabled || !this.dangerLine) return;
-    this.drawDangerLine(COLORS.danger, 0.85);
+    if (!this.animationsEnabled || !this.shipGlow) return;
     this.tweens.add({
       targets: this.shipGlow,
       alpha: 0.7,
@@ -185,34 +228,29 @@ export class GameScene extends Phaser.Scene {
       onComplete: () => {
         if (!this.shipGlow) return;
         this.shipGlow.setAlpha(0.2);
-        this.drawDangerLine(COLORS.primary, 0.28);
       },
     });
   }
 
   playLevelComplete(): void {
-    if (!this.animationsEnabled) return;
-    const sweep = this.add.rectangle(this.width / 2, this.height / 2, this.width, this.height, COLORS.primary, 0.1);
+    if (!this.systemsReady || !this.animationsEnabled) return;
+    const sweep = this.add.rectangle(this.width / 2, this.height / 2, this.width, this.height, COLORS.primary, 0.08);
     this.tweens.add({
       targets: sweep,
       alpha: 0,
-      duration: 420,
+      duration: 360,
       ease: "Quad.easeOut",
       onComplete: () => sweep.destroy(),
     });
   }
 
-  /**
-   * Removes visuals immediately (restart/level clear). During normal play an
-   * in-flight projectile is left alone so the final shot is never cut short.
-   */
+  /** Removes visuals immediately (restart/level clear). */
   clearTargets(force = false): void {
     for (const id of Array.from(this.visuals.keys())) {
       if (force || !this.dyingTargets.has(id)) this.destroyVisual(id);
     }
     if (force) {
-      for (const projectile of this.projectiles) projectile.destroy();
-      this.projectiles.clear();
+      for (const projectile of Array.from(this.projectiles)) this.removeProjectile(projectile);
       this.dyingTargets.clear();
     }
   }
@@ -228,29 +266,21 @@ export class GameScene extends Phaser.Scene {
       }
 
       visual.container.setPosition(target.x, target.y);
-      if (visual.text !== target.text || visual.language !== this.language) {
-        visual.text = target.text;
+      const displayText = target.displayText ?? target.text;
+      if (visual.text !== displayText || visual.language !== this.language) {
+        visual.text = displayText;
         visual.language = this.language;
         this.styleLabel(visual, target);
       }
-      if (visual.matched !== target.matchedGraphemes) {
-        visual.matched = target.matchedGraphemes;
-        this.drawTargetFrame(visual);
-      }
     }
 
-    for (const [id, visual] of this.visuals) {
-      if (!activeIds.has(id) && !this.dyingTargets.has(id)) {
-        visual.container.destroy();
-        this.visuals.delete(id);
-      }
+    for (const [id] of this.visuals) {
+      if (!activeIds.has(id) && !this.dyingTargets.has(id)) this.destroyVisual(id);
     }
   }
 
   private createTargetVisual(target: TargetData): TargetVisual {
-    const frame = this.add.graphics();
-    const progress = this.add.graphics();
-    const label = this.add.text(0, 0, target.text, {
+    const label = this.add.text(0, 0, target.displayText ?? target.text, {
       fontFamily: '"Inter", system-ui, sans-serif',
       fontSize: "20px",
       color: COLORS.text,
@@ -258,63 +288,34 @@ export class GameScene extends Phaser.Scene {
     });
     label.setOrigin(0.5);
 
-    const container = this.add.container(target.x, target.y, [frame, progress, label]);
+    const container = this.add.container(target.x, target.y, [label]);
     const visual: TargetVisual = {
       container,
-      frame,
       label,
-      progress,
-      text: target.text,
-      matched: target.matchedGraphemes,
+      text: target.displayText ?? target.text,
       language: this.language,
     };
     this.styleLabel(visual, target);
-    this.drawTargetFrame(visual);
     return visual;
   }
 
   private styleLabel(visual: TargetVisual, target: TargetData): void {
     const isPersian = visual.language === "fa-AF";
-    const fontSize =
-      target.kind === "letter" ? 28 : target.kind === "word" ? 20 : 16;
-    const scaledSize = Math.max(12, Math.round(fontSize * clamp(this.width / 900, 0.72, 1.1)));
+    const isLongSentence = target.kind === "sentence" && visual.text.length > 44;
+    const fontSize = target.kind === "letter" ? 28 : target.kind === "word" ? 20 : isLongSentence ? 13 : 16;
+    const scaledSize = Math.max(11, Math.round(fontSize * clamp(this.width / 900, 0.72, 1.1)));
 
-    visual.label.setText(target.text);
+    visual.label.setText(visual.text);
     visual.label.setFontFamily(
       isPersian ? '"Vazirmatn", "Inter", sans-serif' : '"Inter", system-ui, sans-serif',
     );
     visual.label.setFontSize(scaledSize);
+    // Targets are deliberately uniform: no preselected or partially typed text.
+    visual.label.setColor(COLORS.text);
     // RTL is a rendering property only: never reverse the string or graphemes.
     visual.label.setRTL(isPersian);
-    visual.label.setWordWrapWidth(Math.max(120, this.width * 0.48), true);
+    visual.label.setWordWrapWidth(Math.max(140, this.width * (isLongSentence ? 0.62 : 0.5)), true);
     visual.label.setOrigin(0.5);
-    this.drawTargetFrame(visual);
-  }
-
-  private drawTargetFrame(visual: TargetVisual): void {
-    const labelWidth = visual.label.width || 40;
-    const labelHeight = visual.label.height || 24;
-    const boxWidth = Math.min(this.width - 28, labelWidth + 26);
-    const boxHeight = labelHeight + 16;
-    const matchedRatio = visual.text
-      ? clamp(visual.matched / Math.max(1, this.displayedGraphemeCount(visual.text)), 0, 1)
-      : 0;
-
-    visual.frame.clear();
-    visual.frame.fillStyle(COLORS.surface, 0.86);
-    visual.frame.lineStyle(matchedRatio > 0 ? 2 : 1, matchedRatio > 0 ? COLORS.primary : COLORS.secondary, 0.82);
-    visual.frame.fillRoundedRect(-boxWidth / 2, -boxHeight / 2, boxWidth, boxHeight, 8);
-    visual.frame.strokeRoundedRect(-boxWidth / 2, -boxHeight / 2, boxWidth, boxHeight, 8);
-
-    visual.progress.clear();
-    if (matchedRatio > 0) {
-      visual.progress.fillStyle(COLORS.primary, 0.95);
-      visual.progress.fillRoundedRect(-boxWidth / 2 + 6, boxHeight / 2 - 5, (boxWidth - 12) * matchedRatio, 3, 2);
-    }
-  }
-
-  private displayedGraphemeCount(text: string): number {
-    return Array.from(text).length;
   }
 
   private spawnExplosion(x: number, y: number): void {
@@ -322,16 +323,16 @@ export class GameScene extends Phaser.Scene {
 
     const colorChoices = [COLORS.primary, COLORS.secondary, COLORS.accent];
     for (let index = 0; index < MAX_EXPLOSION_PARTICLES; index += 1) {
-      const particle = this.add.circle(x, y, 2 + (index % 3), colorChoices[index % colorChoices.length], 0.95);
+      const particle = this.add.circle(x, y, 2 + (index % 3), colorChoices[index % colorChoices.length], 0.9);
       const angle = (Math.PI * 2 * index) / MAX_EXPLOSION_PARTICLES;
-      const distance = 22 + (index % 4) * 8;
+      const distance = 18 + (index % 4) * 7;
       this.tweens.add({
         targets: particle,
         x: x + Math.cos(angle) * distance,
         y: y + Math.sin(angle) * distance,
         alpha: 0,
         scale: 0.4,
-        duration: 360,
+        duration: 320,
         ease: "Quad.easeOut",
         onComplete: () => particle.destroy(),
       });
@@ -352,14 +353,14 @@ export class GameScene extends Phaser.Scene {
     for (let index = 0; index < STAR_COUNT; index += 1) {
       const x = Math.random() * this.width;
       const y = Math.random() * this.height;
-      const radius = index % 9 === 0 ? 1.6 : 1;
-      const star = this.add.circle(x, y, radius, index % 7 === 0 ? COLORS.accent : COLORS.primary, 0.12 + Math.random() * 0.22);
+      const radius = index % 11 === 0 ? 1.4 : 1;
+      const star = this.add.circle(x, y, radius, index % 9 === 0 ? COLORS.accent : COLORS.primary, 0.1 + Math.random() * 0.14);
       this.stars.push(star);
 
       if (this.animationsEnabled && index % 5 === 0) {
         this.tweens.add({
           targets: star,
-          alpha: 0.08,
+          alpha: 0.06,
           duration: 1200 + Math.random() * 1600,
           yoyo: true,
           repeat: -1,
@@ -370,29 +371,29 @@ export class GameScene extends Phaser.Scene {
   }
 
   private drawShip(): void {
-    const x = this.width / 2;
-    const y = this.height - 56;
+    const geometry = getGameArenaGeometry(this.width, this.height);
 
-    this.shipGlow = this.add.circle(0, 16, 20, COLORS.primary, 0.2);
+    this.shipGlow = this.add.circle(0, 14, 16, COLORS.primary, 0.2);
 
     const hull = this.add.graphics();
     hull.fillStyle(COLORS.surface, 1);
-    hull.lineStyle(2, COLORS.primary, 0.95);
+    hull.lineStyle(2, COLORS.primary, 0.9);
     hull.beginPath();
-    hull.moveTo(0, -28);
-    hull.lineTo(22, 18);
-    hull.lineTo(0, 8);
-    hull.lineTo(-22, 18);
+    hull.moveTo(0, -26);
+    hull.lineTo(20, 16);
+    hull.lineTo(0, 7);
+    hull.lineTo(-20, 16);
     hull.closePath();
     hull.fillPath();
     hull.strokePath();
 
-    hull.fillStyle(COLORS.secondary, 0.95);
-    hull.fillRect(-4, -8, 8, 24);
-    hull.fillStyle(COLORS.accent, 0.8);
-    hull.fillCircle(0, -14, 4);
+    hull.fillStyle(COLORS.secondary, 0.9);
+    hull.fillRect(-3.5, -7, 7, 20);
+    hull.fillStyle(COLORS.accent, 0.75);
+    hull.fillCircle(0, -12, 3.5);
 
-    this.ship = this.add.container(x, y, [this.shipGlow, hull]);
+    this.ship = this.add.container(geometry.width / 2, geometry.shipY, [this.shipGlow, hull]);
+    this.ship.setScale(SHIP_SCALE);
     this.startIdleTween();
   }
 
@@ -400,8 +401,8 @@ export class GameScene extends Phaser.Scene {
     if (!this.animationsEnabled || !this.shipGlow || this.idleTween) return;
     this.idleTween = this.tweens.add({
       targets: this.shipGlow,
-      alpha: 0.38,
-      scale: 1.18,
+      alpha: 0.34,
+      scale: 1.14,
       duration: 1100,
       yoyo: true,
       repeat: -1,
@@ -409,24 +410,13 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private drawDangerLine(color: number, alpha: number): void {
-    if (!this.dangerLine) return;
-    const y = this.height - 110;
-    this.dangerLine.clear();
-    this.dangerLine.lineStyle(1, color, alpha);
-    this.dangerLine.beginPath();
-    this.dangerLine.moveTo(24, y);
-    this.dangerLine.lineTo(this.width - 24, y);
-    this.dangerLine.strokePath();
-  }
-
   private handleResize(gameSize: Phaser.Structs.Size): void {
-    this.width = Math.max(280, gameSize.width);
-    this.height = Math.max(240, gameSize.height);
+    const geometry = getGameArenaGeometry(gameSize.width, gameSize.height);
+    this.width = geometry.width;
+    this.height = geometry.height;
 
     this.background?.setDisplaySize(this.width, this.height);
-    this.drawDangerLine(COLORS.primary, 0.28);
-    if (this.ship) this.ship.setPosition(this.width / 2, this.height - 56);
+    if (this.ship) this.ship.setPosition(this.width / 2, geometry.shipY);
 
     for (const star of this.stars) {
       if (star.x > this.width) star.x = Math.random() * this.width;
@@ -450,8 +440,7 @@ export class GameScene extends Phaser.Scene {
     this.idleTween = null;
     this.visuals.clear();
     this.dyingTargets.clear();
-    for (const projectile of this.projectiles) projectile.destroy();
-    this.projectiles.clear();
+    for (const projectile of Array.from(this.projectiles)) this.removeProjectile(projectile);
     this.stars = [];
   }
 }

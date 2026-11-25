@@ -101,14 +101,13 @@ test("about page fits narrow screens in both languages", async ({ page }) => {
   expect(titleBox?.width ?? 0).toBeLessThanOrEqual(320);
 });
 
-test("mobile header keeps settings reachable from the collapsed menu", async ({ page }) => {
+test("mobile header keeps settings reachable without a menu", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 720 });
   await page.goto("/");
 
   const header = page.getByTestId("site-header");
-  await expect(header.getByRole("link", { name: "Settings" })).toHaveCount(0);
+  await expect(header.getByTestId("mobile-menu-toggle")).toHaveCount(0);
 
-  await header.getByTestId("mobile-menu-toggle").click();
   const settingsLink = header.getByRole("link", { name: "Settings" });
   await expect(settingsLink).toBeVisible();
   await settingsLink.click();
@@ -127,4 +126,22 @@ test("overlays scroll instead of clipping on short screens", async ({ page }) =>
   await expect(overlay).toBeVisible();
   const scrollable = await overlay.evaluate((node) => getComputedStyle(node).overflowY);
   expect(scrollable).toBe("auto");
+});
+
+test("navigation stays visible at desktop width without a drawer", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+
+  const header = page.getByTestId("site-header");
+  await expect(header.getByTestId("mobile-menu-toggle")).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  const nav = header.getByRole("navigation", { name: "Main navigation" });
+  await expect(nav.getByRole("link")).toHaveCount(5);
+  const home = nav.getByRole("link", { name: "Home" });
+  await expect(home).toBeVisible();
+  await expect(home).toHaveAttribute("aria-current", "page");
+
+  await nav.getByRole("link", { name: "Game" }).click();
+  await expect(page).toHaveURL(/\/game$/);
 });

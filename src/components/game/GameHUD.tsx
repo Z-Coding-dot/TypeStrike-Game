@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Keyboard, Pause, Play, Settings2 } from "lucide-react";
+import { Crosshair, Keyboard, Pause, Play, Settings2 } from "lucide-react";
 import { IconButton } from "@/components/ui/IconButton";
 import { useI18n } from "@/hooks/useI18n";
 import type { GameStatus } from "@/types/game";
@@ -26,50 +26,57 @@ export function GameHUD({ status, speechNotice, errorMessage, onPauseToggle }: G
   return (
     <section
       aria-label={t("gameControls")}
-      className="ts-panel w-full p-2 sm:p-2.5"
+      className="ts-hud w-full"
       data-testid="game-hud"
     >
-      <div className="flex min-h-11 items-center justify-end gap-2">
-        <IconButton
-          type="button"
-          aria-label={t("openKeyboard")}
-          title={t("openKeyboard")}
-          data-testid="focus-keyboard"
-          className="sm:hidden"
-          onClick={() => {
-            if (typeof document !== "undefined") document.getElementById(TYPING_INPUT_ID)?.focus();
-          }}
-        >
-          <Keyboard className="size-4" aria-hidden="true" />
-        </IconButton>
-        <Link
-          href="/settings"
-          aria-label={t("settings")}
-          title={t("settings")}
-          data-testid="open-settings"
-          className="ts-icon-btn focus-visible:outline-2 focus-visible:outline-offset-2"
-        >
-          <Settings2 className="size-4" aria-hidden="true" />
-        </Link>
-        <IconButton
-          type="button"
-          aria-label={isPaused ? t("resume") : t("pause")}
-          title={isPaused ? t("resume") : t("pause")}
-          data-testid="pause-toggle"
-          onClick={onPauseToggle}
-          disabled={status === "menu" || status === "game-over"}
-        >
-          {isPaused ? <Play className="size-4" aria-hidden="true" /> : <Pause className="size-4" aria-hidden="true" />}
-        </IconButton>
+      <div className="flex min-h-11 items-center justify-between gap-2 px-2 sm:px-3">
+        <span className="ts-hud-label" aria-hidden="true">
+          <Crosshair size={13} />
+          <span dir="ltr">TypeStrike // Range</span>
+        </span>
+
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <IconButton
+            type="button"
+            aria-label={t("openKeyboard")}
+            title={t("openKeyboard")}
+            data-testid="focus-keyboard"
+            className="sm:hidden"
+            onClick={() => {
+              if (typeof document !== "undefined") document.getElementById(TYPING_INPUT_ID)?.focus();
+            }}
+          >
+            <Keyboard className="size-4" aria-hidden="true" />
+          </IconButton>
+          <Link
+            href="/settings"
+            aria-label={t("settings")}
+            title={t("settings")}
+            data-testid="open-settings"
+            className="ts-icon-btn focus-visible:outline-2 focus-visible:outline-offset-2"
+          >
+            <Settings2 className="size-4" aria-hidden="true" />
+          </Link>
+          <IconButton
+            type="button"
+            aria-label={isPaused ? t("resume") : t("pause")}
+            title={isPaused ? t("resume") : t("pause")}
+            data-testid="pause-toggle"
+            onClick={onPauseToggle}
+            disabled={status === "menu" || status === "game-over"}
+          >
+            {isPaused ? <Play className="size-4" aria-hidden="true" /> : <Pause className="size-4" aria-hidden="true" />}
+          </IconButton>
+        </div>
       </div>
 
       {speechNotice ? (
-        <p role="status" className="mt-2 rounded-md border border-secondary/30 bg-secondary/10 px-3 py-2 text-xs text-fg-secondary" data-testid="speech-notice">
+        <p role="status" className="ts-hud-notice" data-testid="speech-notice">
           {speechNotice}
         </p>
       ) : null}
       {errorMessage ? (
-        <p role="alert" className="mt-2 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger" data-testid="game-error">
+        <p role="alert" className="ts-hud-notice ts-hud-notice-error" data-testid="game-error">
           {t("errorsTitle")}: {errorMessage}
         </p>
       ) : null}

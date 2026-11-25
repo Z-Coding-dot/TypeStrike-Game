@@ -1,11 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  SpeechSystem,
-  type SpeechStatus,
-  type SpeechSystemOptions,
-} from "@/game/systems/SpeechSystem";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { gameAudio } from "@/game/systems/AudioController";
+import type { SpeechStatus } from "@/game/systems/SpeechSystem";
 import { useI18n } from "@/hooks/useI18n";
 import { useSettingsStore } from "@/stores/settingsStore";
 import type { LanguageCode } from "@/types/language";
@@ -27,8 +24,8 @@ const INITIAL_STATUS: SpeechStatus = {
 };
 
 /**
- * Bridges the settings store to a single long-lived SpeechSystem instance.
- * Speech is fire-and-forget: callers never await it, so typing is never blocked.
+ * Thin React bridge to the one shared SpeechSystem. Unmounting any consumer
+ * cancels active and queued speech through the controller.
  */
 export function useSpeech(): UseSpeechResult {
   const { language, t } = useI18n();
@@ -36,57 +33,36 @@ export function useSpeech(): UseSpeechResult {
   const speechRate = useSettingsStore((state) => state.speechRate);
   const speechVolume = useSettingsStore((state) => state.speechVolume);
 
-  const systemRef = useRef<SpeechSystem | null>(null);
-  const initialOptionsRef = useRef<SpeechSystemOptions>({
-    enabled: speechEnabled,
-    rate: speechRate,
-    volume: speechVolume,
-  });
-
   const [status, setStatus] = useState<SpeechStatus>(INITIAL_STATUS);
-  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    const system = new SpeechSystem(initialOptionsRef.current);
-    systemRef.current = system;
-    setStatus(system.getStatus());
-    const unsubscribe = system.subscribe(setStatus);
-    setInitialized(true);
-
+    const unsubscribe = gameAudio.subscribeSpeech(setStatus);
     return () => {
       unsubscribe();
-      system.destroy();
-      if (systemRef.current === system) {
-        systemRef.current = null;
-      }
+      gameAudio.cancelSpeech();
     };
   }, []);
 
   useEffect(() => {
-    systemRef.current?.setEnabled(speechEnabled);
-  }, [speechEnabled]);
-
-  useEffect(() => {
-    systemRef.current?.setRate(speechRate);
-  }, [speechRate]);
-
-  useEffect(() => {
-    systemRef.current?.setVolume(speechVolume);
-  }, [speechVolume]);
+    gameAudio.configureSpeech({
+      enabled: speechEnabled,
+      rate: speechRate,
+      volume: speechVolume,
+    });
+  }, [speechEnabled, speechRate, speechVolume]);
 
   const speak = useCallback(
     (text: string, targetLanguage: LanguageCode = language) => {
-      systemRef.current?.speak(text, targetLanguage);
+      gameAudio.speak(text, targetLanguage);
     },
     [language],
   );
 
   const cancel = useCallback(() => {
-    systemRef.current?.cancel();
+    gameAudio.cancelSpeech();
   }, []);
 
   const notice = useMemo(() => {
-    if (!initialized) return null;
     if (!status.supported) return t("speechUnavailable");
     if (!status.enabled) return null;
     if (language === "fa-AF" && !status.persianVoiceAvailable) {
@@ -99,7 +75,7 @@ export function useSpeech(): UseSpeechResult {
       return t("noSpeechVoice");
     }
     return null;
-  }, [initialized, status, language, t]);
+  }, [status, language, t]);
 
   return { speak, cancel, status, notice };
 }

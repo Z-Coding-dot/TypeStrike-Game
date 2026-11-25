@@ -46,7 +46,7 @@ export function AnalyticsChart({ metrics, events }: AnalyticsChartProps) {
               className="block"
             >
               <title>{chartLabel}</title>
-              <line x1="8" y1="150" x2={Math.max(320, bars.length * 110) - 8} y2="150" stroke="var(--border-medium)" />
+              <line x1="8" y1="150" x2={Math.max(320, bars.length * 110) - 8} y2="150" stroke="var(--border-strong)" />
               {bars.map((bar, index) => {
                 const width = 44;
                 const slot = Math.max(320, bars.length * 110) / bars.length;
@@ -54,8 +54,15 @@ export function AnalyticsChart({ metrics, events }: AnalyticsChartProps) {
                 const height = Math.max(2, (bar.value / maxValue) * 112);
                 return (
                   <g key={bar.id}>
-                    <rect x={x} y={150 - height} width={width} height={height} rx={4} fill="var(--color-primary)" opacity={0.82} />
-                    <text x={x + width / 2} y={144 - height} textAnchor="middle" fill="var(--text-primary)" fontSize="11">
+                    <rect x={x} y={150 - height} width={width} height={height} rx={4} fill="var(--color-primary)" />
+                    <text
+                      x={x + width / 2}
+                      y={144 - height}
+                      textAnchor="middle"
+                      fill="var(--text-primary)"
+                      fontSize="11"
+                      direction="ltr"
+                    >
                       {bar.value}
                     </text>
                     <text x={x + width / 2} y={168} textAnchor="middle" fill="var(--text-secondary)" fontSize="10">
@@ -106,8 +113,8 @@ export function AnalyticsChart({ metrics, events }: AnalyticsChartProps) {
                 {events.map((event, index) => (
                   <tr key={`${event.name}-${event.timestamp}-${index}`} className="border-b border-line/60">
                     <td className="py-2 pe-3 font-medium text-fg">{event.name}</td>
-                    <td className="py-2 pe-3 text-fg-secondary tabular-nums">{formatTime(event.timestamp)}</td>
-                    <td className="py-2 pe-3 text-fg-secondary">
+                    <td dir="ltr" className="ts-numeric py-2 pe-3 text-fg-secondary">{formatTime(event.timestamp)}</td>
+                    <td dir="auto" className="py-2 pe-3 text-fg-secondary">
                       {Object.entries(event.properties)
                         .filter(([, value]) => value !== null)
                         .map(([key, value]) => `${key}: ${String(value)}`)
